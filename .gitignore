@@ -1,0 +1,6 @@
+# Compiled binaries
+cli/xparser
+
+# OS files
+.DS_Store
+Thumbs.db

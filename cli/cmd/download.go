@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,11 +151,11 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	cfg, _ := config.Load()
 	baseURL := config.GetBaseURL(cmd, cfg)
 
-	httpClient := http.DefaultClient
+	httpClient := &http.Client{Timeout: 60 * time.Second}
 	if verboseFlag {
 		httpClient = newVerboseHTTPClient()
+		httpClient.Timeout = 60 * time.Second
 	}
-	httpClient.Timeout = 60 * time.Second
 
 	if len(imageIDs) > 1 || isDirectory(downloadOutput) {
 		if err := os.MkdirAll(downloadOutput, 0o755); err != nil {
@@ -180,7 +181,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 		output.Status("[%d/%d] Downloading %s...", i+1, len(imageIDs), imageID)
 
-		apiURL := fmt.Sprintf("%s/ocr_image/download?image_id=%s", baseURL, imageID)
+		apiURL := fmt.Sprintf("%s/ocr_image/download?image_id=%s", baseURL, url.QueryEscape(imageID))
 		req, err := http.NewRequest("GET", apiURL, nil)
 		if err != nil {
 			output.Errorf("[%d/%d] %s - %v", i+1, len(imageIDs), imageID, err)

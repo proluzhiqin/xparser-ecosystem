@@ -138,7 +138,10 @@ func runParse(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no input files specified. Provide files as arguments, use --list, or --stdin")
 	}
 
-	formats := parseFormats(parseFormat)
+	formats, err := parseFormats(parseFormat)
+	if err != nil {
+		return err
+	}
 
 	if err := validateOutputMode(parseOutput, formats, sources, parseStdin); err != nil {
 		return err
@@ -188,6 +191,10 @@ func runSingleParse(client *XParserClient, source string, formats []string, opts
 		return handleAPICodeError(resp.Code, resp.Message)
 	}
 
+	if resp.Result == nil {
+		return fmt.Errorf("API returned success but no result data")
+	}
+
 	elapsed := time.Since(start).Seconds()
 	output.Status("Done in %.1fs (engine: %dms, pages: %d/%d)",
 		elapsed, resp.Duration,
@@ -218,7 +225,10 @@ func runStdinParse(client *XParserClient, opts *ParseOptions) error {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
-	formats := parseFormats(parseFormat)
+	formats, err := parseFormats(parseFormat)
+	if err != nil {
+		return err
+	}
 	return runSingleParse(client, tmpPath, formats, opts)
 }
 
@@ -361,15 +371,12 @@ func saveParseResult(resp *ParseResponse, source string, formats []string, outpu
 func buildParseOpts(cmd *cobra.Command) *ParseOptions {
 	opts := NewParseOptions()
 
-	flagMap := map[string]*struct {
-		strVal  *string
-		intVal  *int
-	}{
-		"parse-mode":            {strVal: &opts.ParseMode},
-		"table-flavor":          {strVal: &opts.TableFlavor},
-		"get-image":             {strVal: &opts.GetImage},
-		"image-output-type":     {strVal: &opts.ImageOutputType},
-		"paratext-mode":         {strVal: &opts.ParatextMode},
+	flagMap := map[string]*string{
+		"parse-mode":            &opts.ParseMode,
+		"table-flavor":          &opts.TableFlavor,
+		"get-image":             &opts.GetImage,
+		"image-output-type":     &opts.ImageOutputType,
+		"paratext-mode":         &opts.ParatextMode,
 	}
 
 	intFlagMap := map[string]*int{
@@ -392,13 +399,11 @@ func buildParseOpts(cmd *cobra.Command) *ParseOptions {
 		"apply-chart":           &opts.ApplyChart,
 	}
 
-	for name, f := range flagMap {
+	for name, ptr := range flagMap {
 		if cmd.Flags().Changed(name) {
 			opts.SetChanged(name)
-			if f.strVal != nil {
-				val, _ := cmd.Flags().GetString(name)
-				*f.strVal = val
-			}
+			val, _ := cmd.Flags().GetString(name)
+			*ptr = val
 		}
 	}
 
@@ -445,9 +450,7 @@ func validateOutputMode(outputPath string, formats []string, sources []string, i
 // ── error handling ──
 
 func handleAPIError(err error) error {
-	output.Errorf("%s", err.Error())
-	os.Exit(exitcode.GeneralError)
-	return nil
+	return &exitError{code: exitcode.GeneralError, msg: err.Error()}
 }
 
 func handleAPICodeError(code int, message string) error {
@@ -455,13 +458,23 @@ func handleAPICodeError(code int, message string) error {
 	if info == nil {
 		return nil
 	}
-	output.Errorf("%s", info.Message)
+	hint := ""
 	if info.Hint != "" {
-		output.Status("Hint: %s", info.Hint)
+		hint = "\nHint: " + info.Hint
 	}
-	os.Exit(info.Code)
-	return nil
+	return &exitError{code: info.Code, msg: info.Message + hint}
 }
+
+// exitError carries a process exit code alongside the error message.
+type exitError struct {
+	code int
+	msg  string
+}
+
+func (e *exitError) Error() string { return e.msg }
+
+// ExitCode returns the process exit code for this error.
+func (e *exitError) ExitCode() int { return e.code }
 
 // ── shared helpers ──
 
@@ -507,21 +520,27 @@ func collectSources(args []string, listFile string, stdinList bool) ([]string, e
 	return sources, nil
 }
 
-func parseFormats(raw string) []string {
+var validFormats = map[string]bool{"md": true, "json": true}
+
+func parseFormats(raw string) ([]string, error) {
 	if raw == "" {
-		return []string{"md"}
+		return []string{"md"}, nil
 	}
 	var formats []string
 	for _, f := range strings.Split(raw, ",") {
 		f = strings.TrimSpace(strings.ToLower(f))
-		if f != "" {
-			formats = append(formats, f)
+		if f == "" {
+			continue
 		}
+		if !validFormats[f] {
+			return nil, fmt.Errorf("unsupported format %q (supported: md, json)", f)
+		}
+		formats = append(formats, f)
 	}
 	if len(formats) == 0 {
-		return []string{"md"}
+		return []string{"md"}, nil
 	}
-	return formats
+	return formats, nil
 }
 
 func baseNameNoExt(source string) string {

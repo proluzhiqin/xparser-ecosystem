@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ type loggingRoundTripper struct {
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 
-	log.Printf("[DEBUG] → %s %s\n", req.Method, req.URL.String())
+	log.Printf("[DEBUG] → %s %s\n", req.Method, redactURL(req.URL))
 
 	// Log request body for JSON payloads only (skip binary uploads)
 	if req.Body != nil && strings.Contains(req.Header.Get("Content-Type"), "application/json") {
@@ -32,12 +33,30 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	duration := time.Since(start)
 
 	if err != nil {
-		log.Printf("[DEBUG] ← ERROR %s %s (%v): %v\n", req.Method, req.URL.String(), duration, err)
+		log.Printf("[DEBUG] ← ERROR %s %s (%v): %v\n", req.Method, redactURL(req.URL), duration, err)
 		return nil, err
 	}
 
-	log.Printf("[DEBUG] ← %d %s %s (%v)\n", res.StatusCode, req.Method, req.URL.String(), duration)
+	log.Printf("[DEBUG] ← %d %s %s (%v)\n", res.StatusCode, req.Method, redactURL(req.URL), duration)
 	return res, err
+}
+
+// redactURL masks sensitive query parameters in the URL for logging.
+var sensitiveParams = map[string]bool{"pdf_pwd": true}
+
+func redactURL(u *url.URL) string {
+	if u.RawQuery == "" {
+		return u.String()
+	}
+	q := u.Query()
+	for key := range q {
+		if sensitiveParams[key] {
+			q.Set(key, "***")
+		}
+	}
+	safe := *u
+	safe.RawQuery = q.Encode()
+	return safe.String()
 }
 
 func newVerboseHTTPClient() *http.Client {

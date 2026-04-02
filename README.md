@@ -33,26 +33,37 @@ xparser-ecosystem/
 
 ### 安装
 
-从 [Releases](https://github.com/proluzhiqin/xparser-ecosystem/releases) 下载对应平台的二进制文件，或从源码构建：
+**Linux / macOS**
 
 ```bash
-cd cli
-go build -o xparser -ldflags "\
-  -X github.com/textin/xparser-ecosystem/cli/cmd.version=0.1.0 \
-  -X github.com/textin/xparser-ecosystem/cli/cmd.commit=$(git rev-parse --short HEAD) \
-  -X github.com/textin/xparser-ecosystem/cli/cmd.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1 | iex
+```
+
+从源码构建请参考 [cli/README.md](cli/README.md#从源码构建)。
 
 ### 配置认证
 
+前往 [Textin 控制台](https://www.textin.com/console/dashboard/setting) 获取 `x-ti-app-id` 和 `x-ti-secret-code`，然后：
+
 ```bash
-# 交互式配置
+# 交互式配置（推荐）
 xparser auth
 
 # 或通过环境变量
-export XPARSER_APP_ID=your_app_id
-export XPARSER_SECRET_CODE=your_secret_code
+export XPARSER_APP_ID=your_x-ti-app-id
+export XPARSER_SECRET_CODE=your_x-ti-secret-code
 ```
+
+| 环境变量 | 对应 Textin 凭证 |
+|----------|------------------|
+| `XPARSER_APP_ID` | `x-ti-app-id` |
+| `XPARSER_SECRET_CODE` | `x-ti-secret-code` |
 
 凭证优先级：CLI 参数 > 环境变量 > 配置文件（`~/.xparser/config.yaml`）
 
@@ -152,7 +163,7 @@ xparser download --from result.json -o ./images/
 
 ## 技术栈
 
-- **语言**：Go 1.18+
+- **语言**：Go 1.23+
 - **CLI 框架**：[Cobra](https://github.com/spf13/cobra)
 - **配置**：YAML（gopkg.in/yaml.v3）
 - **HTTP**：Go 标准库，零外部依赖

@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/spf13/cobra"
@@ -200,7 +199,7 @@ func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource) *XParse
 	cfg, _ := config.Load()
 	baseURL := config.GetBaseURL(cmd, cfg)
 
-	httpClient := http.DefaultClient
+	httpClient := &http.Client{}
 	if verboseFlag {
 		httpClient = newVerboseHTTPClient()
 	}
@@ -259,9 +258,6 @@ func (c *XParserClient) ParseURL(fileURL string, opts *ParseOptions) (*ParseResp
 }
 
 func (c *XParserClient) doRequest(req *http.Request) (*ParseResponse, error) {
-	if c.HTTPClient.Timeout == 0 {
-		c.HTTPClient.Timeout = 10 * time.Minute
-	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

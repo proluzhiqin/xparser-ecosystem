@@ -6,21 +6,73 @@ Textin xParser 文档解析命令行工具，基于 [Textin xParser API](https:/
 
 ## 安装
 
+### 一键安装
+
+**Linux / macOS**
+
+```bash
+curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1 | iex
+```
+
 ### 从源码构建
+
+> 要求 Go 1.23+
+
+**单平台构建（当前系统）：**
 
 ```bash
 cd cli
-GOPROXY=https://goproxy.cn,direct go build -o xparser .
+go build -o xparser .
 ```
 
-带版本信息构建：
+**带版本信息构建：**
 
 ```bash
-go build -ldflags "-X github.com/textin/xparser-ecosystem/cli/cmd.version=0.1.0 \
-  -X github.com/textin/xparser-ecosystem/cli/cmd.commit=$(git rev-parse --short HEAD) \
-  -X github.com/textin/xparser-ecosystem/cli/cmd.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+VERSION=v0.0.1
+COMMIT=$(git rev-parse --short HEAD)
+DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+PKG=github.com/textin/xparser-ecosystem/cli/cmd
+
+go build -ldflags "-s -w \
+  -X ${PKG}.version=${VERSION} \
+  -X ${PKG}.commit=${COMMIT} \
+  -X ${PKG}.date=${DATE}" \
   -o xparser .
 ```
+
+**交叉编译全平台：**
+
+```bash
+VERSION=v0.0.1
+COMMIT=$(git rev-parse --short HEAD)
+DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+PKG=github.com/textin/xparser-ecosystem/cli/cmd
+LDFLAGS="-s -w -X ${PKG}.version=${VERSION} -X ${PKG}.commit=${COMMIT} -X ${PKG}.date=${DATE}"
+
+GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/xparser-linux-amd64 .
+GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/xparser-linux-arm64 .
+GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/xparser-darwin-amd64 .
+GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/xparser-darwin-arm64 .
+GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/xparser-windows-amd64.exe .
+GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/xparser-windows-arm64.exe .
+```
+
+产物位于 `cli/dist/` 目录，共 6 个二进制文件：
+
+| 平台 | 文件 |
+|------|------|
+| Linux x86_64 | `xparser-linux-amd64` |
+| Linux ARM64 | `xparser-linux-arm64` |
+| macOS Intel | `xparser-darwin-amd64` |
+| macOS Apple Silicon | `xparser-darwin-arm64` |
+| Windows x86_64 | `xparser-windows-amd64.exe` |
+| Windows ARM64 | `xparser-windows-arm64.exe` |
 
 ## 快速开始
 
@@ -252,11 +304,8 @@ cat report.pdf | ./xparser parse --stdin --stdin-name report.pdf -o report.md
 ### 自更新
 
 ```bash
-# 检查并更新到最新版本
+# 更新到最新版本
 ./xparser update
-
-# 仅检查是否有更新
-./xparser update --check
 ```
 
 ### 调试模式

@@ -17,8 +17,8 @@ This skill wraps the `xparser` CLI binary. Before reporting an issue, figure out
    # From source
    cd cli && GOPROXY=https://goproxy.cn,direct go build -o xparser .
 
-   # Or download
-   curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser -o xparser && chmod +x xparser
+   # Or install via script
+   curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
    ```
 
 2. Reproduce in your terminal — this isolates skill vs. CLI:

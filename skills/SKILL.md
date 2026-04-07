@@ -1,6 +1,6 @@
 ---
 name: xparser
-description: Textin xParser document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParser API. Designed as Agent infrastructure — zero config, free API default, structured errors, stdout-friendly.
+description: Textin xParser document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParser API. Supports OCR, table extraction, formula recognition, and image extraction. Zero config, free API default, structured errors, stdout-friendly.
 read_when:
   - Extracting text from PDF documents
   - Converting documents to Markdown
@@ -53,26 +53,16 @@ Agent only needs to understand one concept: **View** — different presentations
 
 ## Quick start — zero config
 
-xparse-cli works out of the box with no API key — it defaults to the free API:
+xparse-cli works out of the box with no API key — it defaults to the free API.
+No registration, no API key, no configuration needed for first use.
 
 ```bash
-# Markdown to stdout (free API, zero config)
-xparse-cli parse report.pdf
-
-# JSON view
-xparse-cli parse report.pdf --view json
-
-# Save to directory
-xparse-cli parse report.pdf --output ./result/
-
-# Parse specific pages
-xparse-cli parse report.pdf --page-range "1-5"
-
-# Batch from file list
-xparse-cli parse --list files.txt --output ./result/
+xparse-cli parse report.pdf                        # Markdown to stdout
+xparse-cli parse report.pdf --view json             # JSON view
+xparse-cli parse report.pdf --output ./result/      # Save to directory
+xparse-cli parse report.pdf --page-range "1-5"      # Specific pages
+xparse-cli parse --list files.txt --output ./result/ # Batch mode
 ```
-
-No registration, no API key, no configuration needed for first use.
 
 ## Authentication (for paid API)
 
@@ -121,6 +111,7 @@ xparse-cli parse --list files.txt --output ./result/
 | `--include-char-details` | | `false` | Include character-level coordinates and confidence |
 | `--list` | | | Read input list from file (one path per line); requires `--output` |
 | `--output` | `-o` | _(stdout)_ | Output file path or directory |
+| `--verbose` | `-v` | `false` | Print HTTP request details for debugging |
 
 #### API capabilities (always on by default)
 
@@ -150,11 +141,11 @@ These capabilities are automatically enabled — Agent gets the most complete re
 | Other | `.ofd` |
 | URL | `http://…`, `https://…` |
 
-### download — Fetch images
+### download — Download element images
 
 ```bash
 xparse-cli download --from result.json -o ./images/
-xparse-cli download <image_id> -o ./images/
+xparse-cli download <image_url> -o ./images/
 ```
 
 ### config — Manage settings
@@ -174,66 +165,25 @@ xparse-cli update
 
 ## Recipes
 
-### Read document content (Scene 1)
-
 ```bash
-# Default: markdown text to stdout
-xparse-cli parse report.pdf
-
-# Full JSON for programmatic use
-xparse-cli parse report.pdf --view json
-```
-
-### Parse specific pages (Scene 2)
-
-```bash
-xparse-cli parse book.pdf --page-range "1-5"
-xparse-cli parse book.pdf --page-range "1-2,5-10"
-```
-
-### Encrypted PDF (Scene 3)
-
-```bash
+# Encrypted PDF
 xparse-cli parse secret.pdf --password mypassword
-```
 
-### Character-level details (Scene 4)
-
-```bash
-# Warning: significantly larger response
+# Character-level details (significantly larger response)
 xparse-cli parse report.pdf --view json --include-char-details
-```
 
-### Save output to file
-
-```bash
-# Save to directory (filename derived from input)
-xparse-cli parse report.pdf --output ./result/
+# Non-contiguous page ranges
+xparse-cli parse book.pdf --page-range "1-2,5-10"
 
 # Save to specific file
 xparse-cli parse report.pdf --output report.md
-```
 
-### Batch processing
-
-```bash
-# From a file list
-xparse-cli parse --list files.txt --output ./results/
+# Piping — stdout is content only, stderr is status/logs
+xparse-cli parse report.pdf | grep "revenue"
+xparse-cli parse paper.pdf | llm "summarize this paper"
 ```
 
 Batch mode requires `--output <directory>`. Progress is reported on stderr as `[n/total]`.
-
-### Piping into other tools
-
-xParser outputs content to stdout, status/logs to stderr — clean piping:
-
-```bash
-# Parse and search
-xparse-cli parse report.pdf | grep "revenue"
-
-# Parse and feed to LLM
-xparse-cli parse paper.pdf | llm "summarize this paper"
-```
 
 ## Exit codes
 
@@ -251,15 +201,15 @@ When exit code is 3, stderr contains a JSON object:
 ```json
 {
   "error_type": "password_error",
-  "code": 40422,
-  "message": "Password required or incorrect",
+  "code": 40423,
+  "message": "Password required or incorrect password",
   "suggestion": "Use --password to provide the correct document password",
   "retryable": false
 }
 ```
 
 Fields:
-- `error_type`: category — `auth_error`, `password_error`, `page_range_error`, `format_error`, `file_error`, `param_error`, `parse_error`, `server_error`, `partial_error`, `unknown_error`
+- `error_type`: category — `auth_error`, `quota_error`, `rate_limit_error`, `param_error`, `format_error`, `file_error`, `password_error`, `page_range_error`, `parse_error`, `server_error`, `partial_error`, `unknown_error`
 - `code`: API error code
 - `message`: human-readable description
 - `suggestion`: recommended fix action
@@ -269,24 +219,31 @@ Fields:
 
 | API code | error_type | Description |
 |----------|-----------|-------------|
-| 40101 | auth_error | Missing credentials |
-| 40102 | auth_error | Invalid credentials |
-| 40103 | auth_error | Quota exceeded or account suspended |
-| 40422 | password_error | Password required or incorrect |
-| 40424 | page_range_error | Page number out of range |
-| 40425 | format_error | File format not supported |
-| 40426 | file_error | File is corrupted or unreadable |
-| 40427 | param_error | Invalid DPI value |
-| 40428 | parse_error | Office file conversion failed |
-| 40429 | file_error | PDF content is empty |
 | 500 | server_error | Server internal error |
+| 30203 | server_error | Base service failure |
+| 40003 | quota_error | Insufficient balance |
+| 40004 | param_error | Invalid parameter |
+| 40007 | param_error | Service not found or not published |
+| 40008 | param_error | Service not activated |
+| 40101 | auth_error | Credentials empty |
+| 40102 | auth_error | Authentication failed |
+| 40103 | auth_error | IP not whitelisted |
+| 40301 | format_error | Image type not supported |
+| 40302 | file_error | File size exceeds limit (500MB) |
+| 40303 | format_error | File type not supported |
+| 40304 | file_error | Image dimensions out of range |
+| 40305 | file_error | No file uploaded |
+| 40306 | rate_limit_error | QPS limit exceeded |
+| 40307 | quota_error | Daily free quota exhausted |
+| 40400 | param_error | Invalid request URL |
+| 40422 | file_error | The file is corrupted |
+| 40423 | password_error | Password required or incorrect password |
+| 40424 | page_range_error | Page number out of range |
+| 40425 | format_error | The input file format is not supported |
+| 40427 | param_error | DPI value is not in the allowed list |
+| 40428 | parse_error | Office file conversion failed or timed out |
+| 40429 | parse_error | Unsupported engine |
 | 50207 | partial_error | Some pages failed to parse |
-
-## Output behavior
-
-- **No `--output`**: result goes to stdout; status/progress on stderr
-- **With `--output`**: result saved to file/directory; progress on stderr
-- **Batch mode**: requires `--output <directory>`
 
 ## General rules
 
@@ -327,7 +284,7 @@ After a successful parse, the agent MAY append ONE brief hint (don't repeat in t
 
 - If `--view json` not used: "Use `--view json` for full structured data."
 - If parsing a large PDF: "Use `--page-range` to parse specific pages."
-- If error 40422: "This PDF is encrypted. Use `--password` to provide the password."
+- If error 40423: "This PDF is encrypted. Use `--password` to provide the password."
 
 ## Troubleshooting
 
@@ -335,11 +292,16 @@ After a successful parse, the agent MAY append ONE brief hint (don't repeat in t
 |---------|-----|
 | No output, exit 1 | Check network; retry; add `--verbose` |
 | Exit 2 | Check flag names and values |
-| Exit 3 with password_error | Add `--password` |
-| Exit 3 with page_range_error | Adjust `--page-range` |
-| Exit 3 with format_error | Check file format (see supported list) |
+| Exit 3 with quota_error (40003) | Balance depleted — top up or use `--api free` |
+| Exit 3 with quota_error (40307) | Daily free quota used up — try tomorrow or `--api paid` |
+| Exit 3 with rate_limit_error (40306) | Too many requests — wait and retry |
+| Exit 3 with file_error (40302) | File exceeds 500MB — split or compress |
+| Exit 3 with file_error (40422) | File is corrupted — re-download or use a different copy |
+| Exit 3 with password_error (40423) | Add `--password` with the correct password |
+| Exit 3 with page_range_error (40424) | Adjust `--page-range` to valid range |
+| Exit 3 with format_error (40303/40425) | Check file format (see supported list) |
+| Exit 3 with parse_error (40428) | Retry; or convert Office file to PDF first |
 | Want paid API but no credentials | `xparse-cli auth` or set env vars |
-| Large response needed | Add `--include-char-details` only when needed |
 | Batch partially failed | Check stderr for per-file errors |
 
 ## Notes

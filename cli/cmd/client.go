@@ -2,27 +2,26 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
+	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
-	"strings"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 )
 
-// API base URLs.
+// API endpoints.
 const (
-	paidAPIBaseURL = "https://api.textin.com"
-	freeAPIBaseURL = "http://ht-pdf2md-sandbox.ai.intsig.net"
-	parseAPIPath   = "/ai/service/v1/pdf_to_markdown"
+	paidAPIBaseURL  = "https://api.textin.com"
+	paidParseAPIPath = "/api/v1/xparse/parse/sync"
+
+	freeAPIBaseURL  = "https://img2word-copy.ai.intsig.net"
+	freeParseAPIPath = "/ai/service/v3/pdf_to_markdown"
 )
 
 // APIMode represents free vs paid API selection.
@@ -39,30 +38,136 @@ type XParserClient struct {
 	AppID      string
 	SecretCode string
 	BaseURL    string
+	ParsePath  string
 	IsFreeAPI  bool
 	HTTPClient *http.Client
 }
 
+// ── Request config structures (multipart/form-data "config" field) ──
+
+// ParseRequestConfig is the JSON config sent as the "config" form field.
+type ParseRequestConfig struct {
+	Document     *DocumentConfig `json:"document,omitempty"`
+	Capabilities *Capabilities   `json:"capabilities"`
+	Scope        *Scope          `json:"scope,omitempty"`
+}
+
+// DocumentConfig holds document-level settings.
+type DocumentConfig struct {
+	Password string `json:"password,omitempty"`
+}
+
+// Capabilities controls what the API returns.
+type Capabilities struct {
+	IncludeHierarchy      bool   `json:"include_hierarchy"`
+	IncludeInlineObjects  bool   `json:"include_inline_objects"`
+	IncludeCharDetails    bool   `json:"include_char_details"`
+	IncludeImageData      bool   `json:"include_image_data"`
+	IncludeTableStructure bool   `json:"include_table_structure"`
+	Pages                 bool   `json:"pages"`
+	TitleTree             bool   `json:"title_tree"`
+	TableView             string `json:"table_view"`
+}
+
+// Scope controls the processing range.
+type Scope struct {
+	PageRange string `json:"page_range,omitempty"`
+}
+
+// ── Response structures ──
+
 // ParseResponse is the top-level JSON response from the xParser API.
+// Supports both paid API ("data" field) and free API ("result" field).
 type ParseResponse struct {
 	Code     int             `json:"code"`
 	Message  string          `json:"message"`
-	Result   *ParseResult    `json:"result,omitempty"`
-	Version  string          `json:"version,omitempty"`
-	Duration int             `json:"duration,omitempty"`
-	Metrics  json.RawMessage `json:"metrics,omitempty"`
+	Data     *ParseData      `json:"data,omitempty"`
+	Result   *FreeParseResult `json:"result,omitempty"`  // free API uses "result"
+	Duration int             `json:"duration,omitempty"` // free API uses top-level duration
+	Location json.RawMessage `json:"location,omitempty"`
 }
 
-// ParseResult holds the parsed output from the API.
-type ParseResult struct {
-	Markdown         string          `json:"markdown"`
-	Detail           json.RawMessage `json:"detail,omitempty"`
-	Pages            json.RawMessage `json:"pages,omitempty"`
-	Catalog          json.RawMessage `json:"catalog,omitempty"`
-	TotalPageNumber  int             `json:"total_page_number,omitempty"`
-	ValidPageNumber  int             `json:"valid_page_number,omitempty"`
-	ExcelBase64      string          `json:"excel_base64,omitempty"`
-	Elements         json.RawMessage `json:"elements,omitempty"`
+// GetMarkdown returns markdown from either paid (Data) or free (Result) response.
+func (r *ParseResponse) GetMarkdown() string {
+	if r.Data != nil {
+		return r.Data.Markdown
+	}
+	if r.Result != nil {
+		return r.Result.Markdown
+	}
+	return ""
+}
+
+// HasResult returns true if either Data or Result is present.
+func (r *ParseResponse) HasResult() bool {
+	return r.Data != nil || r.Result != nil
+}
+
+// GetSuccessCount returns the number of successfully parsed pages.
+func (r *ParseResponse) GetSuccessCount() int {
+	if r.Data != nil {
+		return r.Data.SuccessCount
+	}
+	if r.Result != nil {
+		return r.Result.ValidPageNumber
+	}
+	return 0
+}
+
+// GetPageCount returns the total number of pages.
+func (r *ParseResponse) GetPageCount() int {
+	if r.Data != nil && r.Data.Metadata != nil {
+		return r.Data.Metadata.PageCount
+	}
+	if r.Result != nil {
+		return r.Result.TotalPageNumber
+	}
+	return 0
+}
+
+// GetDurationMs returns the engine duration in milliseconds.
+func (r *ParseResponse) GetDurationMs() float64 {
+	if r.Data != nil && r.Data.Summary != nil {
+		return r.Data.Summary.DurationMs
+	}
+	return float64(r.Duration)
+}
+
+// ParseData holds the parsed output from the paid API (new format).
+type ParseData struct {
+	SchemaVersion string          `json:"schema_version"`
+	FileID        string          `json:"file_id"`
+	JobID         string          `json:"job_id"`
+	SuccessCount  int             `json:"success_count"`
+	Metadata      *ParseMetadata  `json:"metadata,omitempty"`
+	Markdown      string          `json:"markdown"`
+	Elements      json.RawMessage `json:"elements,omitempty"`
+	TitleTree     json.RawMessage `json:"title_tree,omitempty"`
+	Pages         json.RawMessage `json:"pages,omitempty"`
+	Summary       *Summary        `json:"summary,omitempty"`
+}
+
+// FreeParseResult holds the parsed output from the free API (old format).
+type FreeParseResult struct {
+	Markdown        string          `json:"markdown"`
+	Detail          json.RawMessage `json:"detail,omitempty"`
+	Pages           json.RawMessage `json:"pages,omitempty"`
+	Catalog         json.RawMessage `json:"catalog,omitempty"`
+	TotalPageNumber int             `json:"total_page_number,omitempty"`
+	ValidPageNumber int             `json:"valid_page_number,omitempty"`
+	Elements        json.RawMessage `json:"elements,omitempty"`
+}
+
+// ParseMetadata holds document metadata from the API.
+type ParseMetadata struct {
+	Filename  string `json:"filename"`
+	Filetype  string `json:"filetype"`
+	PageCount int    `json:"page_count"`
+}
+
+// Summary holds processing statistics.
+type Summary struct {
+	DurationMs float64 `json:"duration_ms"`
 }
 
 // ParseOptions holds V1 parse parameters.
@@ -72,92 +177,32 @@ type ParseOptions struct {
 	IncludeCharDetails bool
 }
 
-// buildQueryParams constructs query parameters with V1 defaults.
-// Free and paid APIs share the same parameter schema; only the base URL differs.
-func (o *ParseOptions) buildQueryParams() (url.Values, error) {
-	q := url.Values{}
-
-	// ── V1 defaults — always sent ──
-	q.Set("apply_document_tree", "1") // include_hierarchy = true
-	q.Set("get_image", "objects")     // include_inline_objects + include_image_data = true
-	q.Set("table_flavor", "html")     // table_view = "html"
-	q.Set("markdown_details", "1")    // include detail
-	q.Set("page_details", "1")        // pages = true
-	q.Set("catalog_details", "1")     // title_tree = true
-	q.Set("apply_merge", "1")         // merge paragraphs/tables
-
-	// ── Optional: include_char_details ──
-	if o.IncludeCharDetails {
-		q.Set("char_details", "1")
+// buildConfig constructs the JSON config string for the multipart "config" field.
+// CLI defaults override API defaults to provide the richest output without extra flags.
+func (o *ParseOptions) buildConfig() string {
+	cfg := ParseRequestConfig{
+		Capabilities: &Capabilities{
+			IncludeHierarchy:      true,  // CLI default: true  (API default: true)
+			IncludeInlineObjects:  true,  // CLI default: true  (API default: false)
+			IncludeCharDetails:    o.IncludeCharDetails, // CLI default: false (API default: false)
+			IncludeImageData:      true,  // CLI default: true  (API default: false)
+			IncludeTableStructure: true,  // CLI default: true  (API default: false)
+			Pages:                 true,  // CLI default: true  (API default: false)
+			TitleTree:             true,  // CLI default: true  (API default: false)
+			TableView:             "html", // CLI default: html  (API default: html)
+		},
 	}
 
-	// ── Optional: password ──
 	if o.Password != "" {
-		q.Set("pdf_pwd", o.Password)
+		cfg.Document = &DocumentConfig{Password: o.Password}
 	}
 
-	// ── Optional: page range ──
 	if o.PageRange != "" {
-		start, count, err := parsePageRange(o.PageRange)
-		if err != nil {
-			return nil, fmt.Errorf("invalid --page-range %q: %w", o.PageRange, err)
-		}
-		q.Set("page_start", fmt.Sprintf("%d", start))
-		q.Set("page_count", fmt.Sprintf("%d", count))
+		cfg.Scope = &Scope{PageRange: o.PageRange}
 	}
 
-	return q, nil
-}
-
-// parsePageRange converts "1-5" or "1-2,5-10" to 0-based page_start and page_count.
-// Page numbers in the range string are 1-based.
-func parsePageRange(rangeStr string) (pageStart, pageCount int, err error) {
-	minPage := math.MaxInt32
-	maxPage := 0
-
-	parts := strings.Split(rangeStr, ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		bounds := strings.SplitN(part, "-", 2)
-		if len(bounds) == 1 {
-			p, e := strconv.Atoi(strings.TrimSpace(bounds[0]))
-			if e != nil || p < 1 {
-				return 0, 0, fmt.Errorf("invalid page number: %s", bounds[0])
-			}
-			if p < minPage {
-				minPage = p
-			}
-			if p > maxPage {
-				maxPage = p
-			}
-		} else {
-			start, e := strconv.Atoi(strings.TrimSpace(bounds[0]))
-			if e != nil || start < 1 {
-				return 0, 0, fmt.Errorf("invalid range start: %s", bounds[0])
-			}
-			end, e := strconv.Atoi(strings.TrimSpace(bounds[1]))
-			if e != nil || end < start {
-				return 0, 0, fmt.Errorf("invalid range end: %s", bounds[1])
-			}
-			if start < minPage {
-				minPage = start
-			}
-			if end > maxPage {
-				maxPage = end
-			}
-		}
-	}
-
-	if minPage == math.MaxInt32 {
-		return 0, 0, fmt.Errorf("empty page range")
-	}
-
-	// Convert 1-based to 0-based
-	return minPage - 1, maxPage - minPage + 1, nil
+	data, _ := json.Marshal(cfg)
+	return string(data)
 }
 
 // resolveAPIMode determines whether to use free or paid API.
@@ -181,11 +226,13 @@ func resolveAPIMode(mode APIMode, cred *config.CredentialSource) (isFree bool) {
 func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource, isFree bool) *XParserClient {
 	cfg, _ := config.Load()
 
-	var baseURL string
+	var baseURL, parsePath string
 	if isFree {
 		baseURL = freeAPIBaseURL
+		parsePath = freeParseAPIPath
 	} else {
 		baseURL = config.GetBaseURL(cmd, cfg)
+		parsePath = paidParseAPIPath
 	}
 
 	httpClient := &http.Client{}
@@ -197,6 +244,7 @@ func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource, isFree 
 		AppID:      cred.AppID,
 		SecretCode: cred.SecretCode,
 		BaseURL:    baseURL,
+		ParsePath:  parsePath,
 		IsFreeAPI:  isFree,
 		HTTPClient: httpClient,
 	}
@@ -204,22 +252,34 @@ func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource, isFree 
 
 // ParseFile uploads a local file to the xParser API and returns the response.
 func (c *XParserClient) ParseFile(filePath string, opts *ParseOptions) (*ParseResponse, error) {
-	data, err := os.ReadFile(filePath)
+	fileData, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
-	apiURL, err := c.buildURL(opts)
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// file field
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err := part.Write(fileData); err != nil {
+		return nil, fmt.Errorf("failed to write file data: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(data))
+	// config field (JSON string)
+	if err := writer.WriteField("config", opts.buildConfig()); err != nil {
+		return nil, fmt.Errorf("failed to write config field: %w", err)
+	}
+	writer.Close()
+
+	req, err := http.NewRequest("POST", c.BaseURL+c.ParsePath, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	c.setAuthHeaders(req)
 
 	return c.doRequest(req)
@@ -227,32 +287,28 @@ func (c *XParserClient) ParseFile(filePath string, opts *ParseOptions) (*ParseRe
 
 // ParseURL sends a URL to the xParser API for remote file parsing.
 func (c *XParserClient) ParseURL(fileURL string, opts *ParseOptions) (*ParseResponse, error) {
-	apiURL, err := c.buildURL(opts)
-	if err != nil {
-		return nil, err
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// file_url field
+	if err := writer.WriteField("file_url", fileURL); err != nil {
+		return nil, fmt.Errorf("failed to write file_url field: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(fileURL))
+	// config field (JSON string)
+	if err := writer.WriteField("config", opts.buildConfig()); err != nil {
+		return nil, fmt.Errorf("failed to write config field: %w", err)
+	}
+	writer.Close()
+
+	req, err := http.NewRequest("POST", c.BaseURL+c.ParsePath, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	c.setAuthHeaders(req)
 
 	return c.doRequest(req)
-}
-
-func (c *XParserClient) buildURL(opts *ParseOptions) (string, error) {
-	apiURL := c.BaseURL + parseAPIPath
-	q, err := opts.buildQueryParams()
-	if err != nil {
-		return "", err
-	}
-	if len(q) > 0 {
-		apiURL += "?" + q.Encode()
-	}
-	return apiURL, nil
 }
 
 func (c *XParserClient) setAuthHeaders(req *http.Request) {
@@ -269,27 +325,18 @@ func (c *XParserClient) doRequest(req *http.Request) (*ParseResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var result ParseResponse
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 		}
 		return nil, fmt.Errorf("failed to parse response JSON: %w", err)
 	}
 
 	return &result, nil
-}
-
-// SaveExcel decodes and saves the excel_base64 field to a file.
-func SaveExcel(base64Str string, path string) error {
-	data, err := base64.StdEncoding.DecodeString(base64Str)
-	if err != nil {
-		return fmt.Errorf("failed to decode excel base64: %w", err)
-	}
-	return os.WriteFile(path, data, 0o644)
 }

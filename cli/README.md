@@ -117,7 +117,7 @@ xparse-cli parse report.pdf --api paid
 | `xparse-cli parse` | 解析文档，输出 Markdown / JSON |
 | `xparse-cli auth` | 配置 API 凭证（交互式） |
 | `xparse-cli config` | 管理配置（show / set / reset / path） |
-| `xparse-cli download` | 下载解析结果中的图片（通过 image_id） |
+| `xparse-cli download` | 下载解析结果中 elements 的图片 |
 | `xparse-cli update` | 自更新 CLI 到最新版本 |
 | `xparse-cli version` | 显示版本信息 |
 
@@ -132,6 +132,7 @@ xparse-cli parse report.pdf --api paid
 | `--include-char-details` | `false` | 返回字符级坐标和置信度 |
 | `--list` | | 从文件读取输入列表（需配合 `--output`） |
 | `-o, --output` | _(stdout)_ | 输出文件路径或目录 |
+| `-v, --verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
 
 ### API capabilities 默认值
 
@@ -169,11 +170,11 @@ xparse-cli parse --list files.txt --output ./results/
 ### 下载图片
 
 ```bash
-# 从解析结果批量下载图片
+# 从解析结果 JSON 中提取 elements 图片并下载
 xparse-cli download --from result.json -o ./images/
 
-# 按 image_id 下载
-xparse-cli download abc123 def456 -o ./images/
+# 直接下载图片 URL
+xparse-cli download https://web-api.textin.com/ocr_image/external/abc123.jpg -o ./images/
 ```
 
 ### 配置管理

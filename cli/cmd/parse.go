@@ -184,14 +184,13 @@ func runSingleParse(client *XParserClient, source string, opts *ParseOptions) er
 		return handleAPICodeError(resp.Code, resp.Message)
 	}
 
-	if resp.Result == nil {
+	if !resp.HasResult() {
 		return &exitError{code: exitcode.GeneralError, msg: "API returned success but no result data"}
 	}
 
 	elapsed := time.Since(start).Seconds()
-	output.Status("Done in %.1fs (engine: %dms, pages: %d/%d)",
-		elapsed, resp.Duration,
-		resp.Result.ValidPageNumber, resp.Result.TotalPageNumber)
+	output.Status("Done in %.1fs (engine: %.0fms, pages: %d/%d)",
+		elapsed, resp.GetDurationMs(), resp.GetSuccessCount(), resp.GetPageCount())
 
 	return outputResult(resp, source)
 }
@@ -239,7 +238,7 @@ func runBatchParse(client *XParserClient, sources []string, opts *ParseOptions) 
 			continue
 		}
 
-		if resp.Result == nil {
+		if !resp.HasResult() {
 			output.Errorf("[%d/%d] %s - API returned success but no result data", i+1, total, filepath.Base(source))
 			failed++
 			continue
@@ -276,7 +275,7 @@ func outputResult(resp *ParseResponse, source string) error {
 			data, _ := json.MarshalIndent(resp, "", "  ")
 			fmt.Println(string(data))
 		default: // "markdown"
-			fmt.Print(resp.Result.Markdown)
+			fmt.Print(resp.GetMarkdown())
 		}
 		return nil
 	}
@@ -314,7 +313,7 @@ func saveResult(resp *ParseResponse, source string, outputPath string) (string, 
 			return "", fmt.Errorf("failed to save json: %w", err)
 		}
 	default: // "markdown"
-		if err := os.WriteFile(outPath, []byte(resp.Result.Markdown), 0o644); err != nil {
+		if err := os.WriteFile(outPath, []byte(resp.GetMarkdown()), 0o644); err != nil {
 			return "", fmt.Errorf("failed to save markdown: %w", err)
 		}
 	}

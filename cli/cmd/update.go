@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 

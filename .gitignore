@@ -1,9 +1,11 @@
 # Compiled binaries
 cli/xparser
-cli/dist/
+dist/
+test
 
 # OS files
 .DS_Store
 Thumbs.db
 
-test
+# claude files
+.claude

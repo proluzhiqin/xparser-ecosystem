@@ -4,7 +4,7 @@
 # Environment variables:
 #   XPARSER_VERSION   - version to install (default: "latest")
 #   XPARSER_BASE_URL  - override download base URL
-#   INSTALL_DIR       - install directory (default: $HOME\.xparser\bin)
+#   INSTALL_DIR       - install directory (default: $HOME\.xparse-cli\bin)
 
 $ErrorActionPreference = "Stop"
 

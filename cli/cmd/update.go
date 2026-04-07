@@ -20,7 +20,7 @@ var updateCmd = &cobra.Command{
 }
 
 const (
-	cdnBaseURL = "https://dllf.intsig.net/download/2026/Solution/xparser"
+	cdnBaseURL = "https://dllf.intsig.net/download/2026/Solution/xparse-cli"
 )
 
 func init() {
@@ -31,7 +31,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	output.Status("Current version: %s", version)
 	output.Status("Downloading latest version...")
 
-	binaryName := fmt.Sprintf("xparser-%s-%s", runtime.GOOS, runtime.GOARCH)
+	binaryName := fmt.Sprintf("xparse-cli-%s-%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		binaryName += ".exe"
 	}

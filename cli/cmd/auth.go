@@ -6,26 +6,25 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/textin/xparser-ecosystem/cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
-var (
-	authShow bool
-)
+var authShow bool
 
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Configure API credentials for document parsing",
 	Long: `Authenticate with your Textin xParser API credentials (app-id and secret-code).
 Get your credentials at https://www.textin.com/console/dashboard/setting`,
-	Example: `  xparser auth              # Interactive credential setup
-  xparser auth --show       # Show current credential source
+	Example: `  xparse-cli auth              # Interactive credential setup
+  xparse-cli auth --show       # Show current credential source
 
   # For automation, set environment variables:
-  export XPARSER_APP_ID=your_app_id
-  export XPARSER_SECRET_CODE=your_secret_code`,
+  export XPARSE_APP_ID=your_app_id
+  export XPARSE_SECRET_CODE=your_secret_code`,
 	RunE: runAuth,
 }
 
@@ -49,7 +48,7 @@ func runAuthShow() error {
 	}
 	if credSrc.AppID == "" {
 		fmt.Println("No credentials configured.")
-		fmt.Println("Run 'xparser auth' to set up your API credentials.")
+		fmt.Println("Run 'xparse-cli auth' to set up your API credentials.")
 		return nil
 	}
 
@@ -120,7 +119,7 @@ func runAuthSetup() error {
 		return fmt.Errorf("failed to save credentials: %w", err)
 	}
 
-	output.Status("Credentials saved successfully to ~/.xparser/config.yaml")
+	output.Status("Credentials saved successfully to ~/.xparse-cli/config.yaml")
 	return nil
 }
 

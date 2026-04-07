@@ -3,15 +3,16 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/textin/xparser-ecosystem/cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage CLI configuration",
-	Long:  `View, set, or reset xParser CLI configuration stored in ~/.xparser/config.yaml.`,
+	Long:  `View, set, or reset xParser CLI configuration stored in ~/.xparse-cli/config.yaml.`,
 }
 
 // ── config show ──
@@ -50,11 +51,6 @@ var configShowCmd = &cobra.Command{
 
 // ── config set ──
 
-var (
-	configSetKey   string
-	configSetValue string
-)
-
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
@@ -62,8 +58,8 @@ var configSetCmd = &cobra.Command{
   - app_id        Textin App ID
   - secret_code   Textin Secret Code
   - base_url      API base URL (for private deployments)`,
-	Example: `  ./xparser config set base_url https://your-server.com
-  ./xparser config set app_id your_app_id`,
+	Example: `  ./xparse-cli config set base_url https://your-server.com
+  ./xparse-cli config set app_id your_app_id`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
@@ -98,7 +94,7 @@ var configSetCmd = &cobra.Command{
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
-	Long:  `Remove all saved configuration from ~/.xparser/config.yaml.`,
+	Long:  `Remove all saved configuration from ~/.xparse-cli/config.yaml.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := config.Save(&config.Config{}); err != nil {
 			return fmt.Errorf("failed to reset config: %w", err)

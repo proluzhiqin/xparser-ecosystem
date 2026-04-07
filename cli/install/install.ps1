@@ -1,5 +1,5 @@
 # xParser CLI installer for Windows
-# Usage: irm https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1 | iex
+# Usage: irm https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1 | iex
 #
 # Environment variables:
 #   XPARSER_VERSION   - version to install (default: "latest")
@@ -12,8 +12,8 @@ $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
 $Version = if ($env:XPARSER_VERSION) { $env:XPARSER_VERSION } else { "latest" }
-$BaseURL = if ($env:XPARSER_BASE_URL) { $env:XPARSER_BASE_URL } else { "https://dllf.intsig.net/download/2026/Solution/xparser" }
-$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$HOME\.xparser\bin" }
+$BaseURL = if ($env:XPARSER_BASE_URL) { $env:XPARSER_BASE_URL } else { "https://dllf.intsig.net/download/2026/Solution/xparse-cli" }
+$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$HOME\.xparse-cli\bin" }
 
 $Arch = if ([Environment]::Is64BitOperatingSystem) {
     if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
@@ -21,11 +21,11 @@ $Arch = if ([Environment]::Is64BitOperatingSystem) {
     Write-Error "32-bit Windows is not supported"; exit 1
 }
 
-$Binary = "xparser-windows-${Arch}.exe"
+$Binary = "xparse-cli-windows-${Arch}.exe"
 $URL = "${BaseURL}/${Version}/${Binary}"
-$DestPath = Join-Path $InstallDir "xparser.exe"
+$DestPath = Join-Path $InstallDir "xparse-cli.exe"
 
-Write-Host "Downloading xparser ${Version} for windows/${Arch}..."
+Write-Host "Downloading xparse-cli ${Version} for windows/${Arch}..."
 Write-Host "  ${URL}"
 
 if (-not (Test-Path $InstallDir)) {

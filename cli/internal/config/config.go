@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const configDirName = ".xparser"
+const configDirName = ".xparse-cli"
 const configFileName = "config.yaml"
 
 // Config represents the configuration file structure.
@@ -93,8 +93,8 @@ type CredentialSource struct {
 
 // ResolveCredentials resolves the API credentials from multiple sources in priority order:
 // 1. --app-id / --secret-code flags
-// 2. XPARSER_APP_ID / XPARSER_SECRET_CODE env vars
-// 3. ~/.xparser/config.yaml
+// 2. XPARSE_APP_ID / XPARSE_SECRET_CODE env vars
+// 3. ~/.xparse-cli/config.yaml
 func ResolveCredentials(cmd *cobra.Command) (*CredentialSource, error) {
 	// 1. Check flags
 	if cmd != nil {
@@ -105,9 +105,9 @@ func ResolveCredentials(cmd *cobra.Command) (*CredentialSource, error) {
 		}
 	}
 
-	// 2. Check env vars
-	appIDEnv := os.Getenv("XPARSER_APP_ID")
-	secretCodeEnv := os.Getenv("XPARSER_SECRET_CODE")
+	// 2. Check env vars (V1: XPARSE_APP_ID / XPARSE_SECRET_CODE)
+	appIDEnv := os.Getenv("XPARSE_APP_ID")
+	secretCodeEnv := os.Getenv("XPARSE_SECRET_CODE")
 	if strings.TrimSpace(appIDEnv) != "" && strings.TrimSpace(secretCodeEnv) != "" {
 		return &CredentialSource{AppID: appIDEnv, SecretCode: secretCodeEnv, Source: "env"}, nil
 	}

@@ -2,7 +2,7 @@
 set -e
 
 # xParser CLI installer
-# Usage: curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
+# Usage: curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
 #
 # Environment variables:
 #   XPARSER_VERSION   - version to install (default: "latest")
@@ -10,7 +10,7 @@ set -e
 #   INSTALL_DIR       - install directory (default: ~/.local/bin)
 
 VERSION="${XPARSER_VERSION:-latest}"
-BASE_URL="${XPARSER_BASE_URL:-https://dllf.intsig.net/download/2026/Solution/xparser}"
+BASE_URL="${XPARSER_BASE_URL:-https://dllf.intsig.net/download/2026/Solution/xparse-cli}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 detect_platform() {
@@ -82,18 +82,18 @@ ensure_path() {
     # Ensure parent dir exists (for fish config path)
     mkdir -p "$(dirname "$PROFILE")" 2>/dev/null || true
 
-    printf '\n# Added by xparser installer\n%s\n' "$EXPORT_LINE" >> "$PROFILE"
+    printf '\n# Added by xparse-cli installer\n%s\n' "$EXPORT_LINE" >> "$PROFILE"
     echo "Added ${INSTALL_DIR} to PATH in ${PROFILE}"
     echo "Run: source ${PROFILE}  (or restart your terminal)"
 }
 
 download_and_install() {
-    BINARY="xparser-${OS}-${ARCH}"
+    BINARY="xparse-cli-${OS}-${ARCH}"
     URL="${BASE_URL}/${VERSION}/${BINARY}"
     TMP="$(mktemp)"
     trap 'rm -f "$TMP"' EXIT
 
-    echo "Downloading xparser ${VERSION} for ${OS}/${ARCH}..."
+    echo "Downloading xparse-cli ${VERSION} for ${OS}/${ARCH}..."
     echo "  ${URL}"
 
     if command -v curl >/dev/null 2>&1; then
@@ -113,18 +113,18 @@ download_and_install() {
 
     ensure_dir
 
-    mv "$TMP" "${INSTALL_DIR}/xparser"
-    chmod +x "${INSTALL_DIR}/xparser"
+    mv "$TMP" "${INSTALL_DIR}/xparse-cli"
+    chmod +x "${INSTALL_DIR}/xparse-cli"
 
     ensure_path
 
     echo ""
     echo "Installed successfully!"
     echo "=========================================================="
-    "${INSTALL_DIR}/xparser" version
+    "${INSTALL_DIR}/xparse-cli" version
     echo "=========================================================="
     echo ""
-    echo "Executable: ${INSTALL_DIR}/xparser"
+    echo "Executable: ${INSTALL_DIR}/xparse-cli"
 }
 
 detect_platform

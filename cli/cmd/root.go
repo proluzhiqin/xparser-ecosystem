@@ -13,25 +13,31 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "xparser",
-	Short:   "Textin xParser CLI — turn documents into Markdown",
+	Use:     "xparse-cli",
+	Short:   "Textin xParser CLI — parse documents for Agents",
 	Version: version,
 	Long: `Textin xParser CLI is a command-line tool for document parsing powered by Textin xParser API.
+Designed as Agent infrastructure — zero config, stdout-friendly, structured errors.
 
 Supports: PDF, Images (png, jpg, bmp, tiff, webp), Doc(x), Ppt(x), Xls(x), HTML, TXT, OFD, RTF
 
-  # Parse a document to markdown
-  xparser parse report.pdf                          # markdown to stdout
-  xparser parse report.pdf -o ./out/                # save to directory
-  xparser parse report.pdf --parse-mode vlm         # use VLM mode
-  xparser parse *.pdf -o ./results/                  # batch mode
+  # Zero config — free API, markdown to stdout
+  xparse-cli parse report.pdf
 
-  # Parse with options
-  xparser parse report.pdf --table-flavor md --get-image objects -o ./out/
+  # JSON view
+  xparse-cli parse report.pdf --view json
 
-Authenticate first:
+  # Save to directory
+  xparse-cli parse report.pdf --output ./result/
 
-  xparser auth
+  # Specific pages
+  xparse-cli parse report.pdf --page-range "1-5"
+
+  # Batch from file list
+  xparse-cli parse --list files.txt --output ./result/
+
+  # Use paid API
+  xparse-cli parse report.pdf --api paid
 
 For more information, visit https://www.textin.com`,
 	SilenceUsage:  true,

@@ -6,13 +6,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
-	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/textin/xparser-ecosystem/cli/internal/config"
+)
+
+// API base URLs.
+const (
+	paidAPIBaseURL = "https://api.textin.com"
+	freeAPIBaseURL = "http://ht-pdf2md-sandbox.ai.intsig.net"
+	parseAPIPath   = "/ai/service/v1/pdf_to_markdown"
+)
+
+// APIMode represents free vs paid API selection.
+type APIMode string
+
+const (
+	APIModeAuto APIMode = ""     // auto: paid if key exists, else free
+	APIModeFree APIMode = "free"
+	APIModePaid APIMode = "paid"
 )
 
 // XParserClient wraps HTTP calls to the Textin xParser API.
@@ -20,6 +39,7 @@ type XParserClient struct {
 	AppID      string
 	SecretCode string
 	BaseURL    string
+	IsFreeAPI  bool
 	HTTPClient *http.Client
 }
 
@@ -35,169 +55,138 @@ type ParseResponse struct {
 
 // ParseResult holds the parsed output from the API.
 type ParseResult struct {
-	Markdown         string            `json:"markdown"`
-	Detail           json.RawMessage   `json:"detail,omitempty"`
-	Pages            json.RawMessage   `json:"pages,omitempty"`
-	Catalog          json.RawMessage   `json:"catalog,omitempty"`
-	TotalPageNumber  int               `json:"total_page_number,omitempty"`
-	ValidPageNumber  int               `json:"valid_page_number,omitempty"`
-	ExcelBase64      string            `json:"excel_base64,omitempty"`
-	Elements         json.RawMessage   `json:"elements,omitempty"`
+	Markdown         string          `json:"markdown"`
+	Detail           json.RawMessage `json:"detail,omitempty"`
+	Pages            json.RawMessage `json:"pages,omitempty"`
+	Catalog          json.RawMessage `json:"catalog,omitempty"`
+	TotalPageNumber  int             `json:"total_page_number,omitempty"`
+	ValidPageNumber  int             `json:"valid_page_number,omitempty"`
+	ExcelBase64      string          `json:"excel_base64,omitempty"`
+	Elements         json.RawMessage `json:"elements,omitempty"`
 }
 
-// ParseOptions contains the query parameters for the parse API.
+// ParseOptions holds V1 parse parameters.
 type ParseOptions struct {
-	ParseMode         string
-	PdfPwd            string
-	PageStart         int
-	PageCount         int
-	DPI               int
-	ApplyDocumentTree int
-	TableFlavor       string
-	GetImage          string
-	ImageOutputType   string
-	ParatextMode      string
-	FormulaLevel      int
-	UnderlineLevel    int
-	ApplyMerge        int
-	ApplyImageAnalysis int
-	MarkdownDetails   int
-	PageDetails       int
-	RawOCR            int
-	CharDetails       int
-	CatalogDetails    int
-	GetExcel          int
-	CropDewarp        int
-	RemoveWatermark   int
-	ApplyChart        int
-
-	// Track which flags were explicitly set
-	changed map[string]bool
+	PageRange          string // e.g. "1-5" or "1-2,5-10"
+	Password           string
+	IncludeCharDetails bool
 }
 
-// NewParseOptions returns defaults matching the API defaults.
-func NewParseOptions() *ParseOptions {
-	return &ParseOptions{
-		ParseMode:         "scan",
-		PageStart:         0,
-		PageCount:         1000,
-		DPI:               144,
-		ApplyDocumentTree: 1,
-		TableFlavor:       "html",
-		GetImage:          "none",
-		ImageOutputType:   "default",
-		ParatextMode:      "annotation",
-		FormulaLevel:      0,
-		UnderlineLevel:    0,
-		ApplyMerge:        1,
-		ApplyImageAnalysis: 0,
-		MarkdownDetails:   1,
-		PageDetails:       1,
-		RawOCR:            0,
-		CharDetails:       0,
-		CatalogDetails:    0,
-		GetExcel:          0,
-		CropDewarp:        0,
-		RemoveWatermark:   0,
-		ApplyChart:        0,
-		changed:           make(map[string]bool),
-	}
-}
-
-// SetChanged marks a flag as explicitly set by the user.
-func (o *ParseOptions) SetChanged(name string) {
-	if o.changed == nil {
-		o.changed = make(map[string]bool)
-	}
-	o.changed[name] = true
-}
-
-// IsChanged returns whether a flag was explicitly set.
-func (o *ParseOptions) IsChanged(name string) bool {
-	return o.changed[name]
-}
-
-// buildQueryParams constructs query parameters, only including non-default or explicitly-changed values.
-func (o *ParseOptions) buildQueryParams() url.Values {
+// buildQueryParams constructs query parameters with V1 defaults.
+// Free and paid APIs share the same parameter schema; only the base URL differs.
+func (o *ParseOptions) buildQueryParams() (url.Values, error) {
 	q := url.Values{}
 
-	if o.IsChanged("parse-mode") {
-		q.Set("parse_mode", o.ParseMode)
-	}
-	if o.PdfPwd != "" {
-		q.Set("pdf_pwd", o.PdfPwd)
-	}
-	if o.IsChanged("page-start") {
-		q.Set("page_start", fmt.Sprintf("%d", o.PageStart))
-	}
-	if o.IsChanged("page-count") {
-		q.Set("page_count", fmt.Sprintf("%d", o.PageCount))
-	}
-	if o.IsChanged("dpi") {
-		q.Set("dpi", fmt.Sprintf("%d", o.DPI))
-	}
-	if o.IsChanged("apply-document-tree") {
-		q.Set("apply_document_tree", fmt.Sprintf("%d", o.ApplyDocumentTree))
-	}
-	if o.IsChanged("table-flavor") {
-		q.Set("table_flavor", o.TableFlavor)
-	}
-	if o.IsChanged("get-image") {
-		q.Set("get_image", o.GetImage)
-	}
-	if o.IsChanged("image-output-type") {
-		q.Set("image_output_type", o.ImageOutputType)
-	}
-	if o.IsChanged("paratext-mode") {
-		q.Set("paratext_mode", o.ParatextMode)
-	}
-	if o.IsChanged("formula-level") {
-		q.Set("formula_level", fmt.Sprintf("%d", o.FormulaLevel))
-	}
-	if o.IsChanged("underline-level") {
-		q.Set("underline_level", fmt.Sprintf("%d", o.UnderlineLevel))
-	}
-	if o.IsChanged("apply-merge") {
-		q.Set("apply_merge", fmt.Sprintf("%d", o.ApplyMerge))
-	}
-	if o.IsChanged("apply-image-analysis") {
-		q.Set("apply_image_analysis", fmt.Sprintf("%d", o.ApplyImageAnalysis))
-	}
-	if o.IsChanged("markdown-details") {
-		q.Set("markdown_details", fmt.Sprintf("%d", o.MarkdownDetails))
-	}
-	if o.IsChanged("page-details") {
-		q.Set("page_details", fmt.Sprintf("%d", o.PageDetails))
-	}
-	if o.IsChanged("raw-ocr") {
-		q.Set("raw_ocr", fmt.Sprintf("%d", o.RawOCR))
-	}
-	if o.IsChanged("char-details") {
-		q.Set("char_details", fmt.Sprintf("%d", o.CharDetails))
-	}
-	if o.IsChanged("catalog-details") {
-		q.Set("catalog_details", fmt.Sprintf("%d", o.CatalogDetails))
-	}
-	if o.IsChanged("get-excel") {
-		q.Set("get_excel", fmt.Sprintf("%d", o.GetExcel))
-	}
-	if o.IsChanged("crop-dewarp") {
-		q.Set("crop_dewarp", fmt.Sprintf("%d", o.CropDewarp))
-	}
-	if o.IsChanged("remove-watermark") {
-		q.Set("remove_watermark", fmt.Sprintf("%d", o.RemoveWatermark))
-	}
-	if o.IsChanged("apply-chart") {
-		q.Set("apply_chart", fmt.Sprintf("%d", o.ApplyChart))
+	// ── V1 defaults — always sent ──
+	q.Set("apply_document_tree", "1") // include_hierarchy = true
+	q.Set("get_image", "objects")     // include_inline_objects + include_image_data = true
+	q.Set("table_flavor", "html")     // table_view = "html"
+	q.Set("markdown_details", "1")    // include detail
+	q.Set("page_details", "1")        // pages = true
+	q.Set("catalog_details", "1")     // title_tree = true
+	q.Set("apply_merge", "1")         // merge paragraphs/tables
+
+	// ── Optional: include_char_details ──
+	if o.IncludeCharDetails {
+		q.Set("char_details", "1")
 	}
 
-	return q
+	// ── Optional: password ──
+	if o.Password != "" {
+		q.Set("pdf_pwd", o.Password)
+	}
+
+	// ── Optional: page range ──
+	if o.PageRange != "" {
+		start, count, err := parsePageRange(o.PageRange)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --page-range %q: %w", o.PageRange, err)
+		}
+		q.Set("page_start", fmt.Sprintf("%d", start))
+		q.Set("page_count", fmt.Sprintf("%d", count))
+	}
+
+	return q, nil
 }
 
-// newXParserClient creates a client with credentials and global flags applied.
-func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource) *XParserClient {
+// parsePageRange converts "1-5" or "1-2,5-10" to 0-based page_start and page_count.
+// Page numbers in the range string are 1-based.
+func parsePageRange(rangeStr string) (pageStart, pageCount int, err error) {
+	minPage := math.MaxInt32
+	maxPage := 0
+
+	parts := strings.Split(rangeStr, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		bounds := strings.SplitN(part, "-", 2)
+		if len(bounds) == 1 {
+			p, e := strconv.Atoi(strings.TrimSpace(bounds[0]))
+			if e != nil || p < 1 {
+				return 0, 0, fmt.Errorf("invalid page number: %s", bounds[0])
+			}
+			if p < minPage {
+				minPage = p
+			}
+			if p > maxPage {
+				maxPage = p
+			}
+		} else {
+			start, e := strconv.Atoi(strings.TrimSpace(bounds[0]))
+			if e != nil || start < 1 {
+				return 0, 0, fmt.Errorf("invalid range start: %s", bounds[0])
+			}
+			end, e := strconv.Atoi(strings.TrimSpace(bounds[1]))
+			if e != nil || end < start {
+				return 0, 0, fmt.Errorf("invalid range end: %s", bounds[1])
+			}
+			if start < minPage {
+				minPage = start
+			}
+			if end > maxPage {
+				maxPage = end
+			}
+		}
+	}
+
+	if minPage == math.MaxInt32 {
+		return 0, 0, fmt.Errorf("empty page range")
+	}
+
+	// Convert 1-based to 0-based
+	return minPage - 1, maxPage - minPage + 1, nil
+}
+
+// resolveAPIMode determines whether to use free or paid API.
+// Logic:
+//   - --api free  → free
+//   - --api paid  → paid (requires credentials)
+//   - default     → paid if credentials exist, else free
+func resolveAPIMode(mode APIMode, cred *config.CredentialSource) (isFree bool) {
+	switch mode {
+	case APIModeFree:
+		return true
+	case APIModePaid:
+		return false
+	default:
+		// Auto: use paid if credentials are available
+		return cred.AppID == "" || cred.SecretCode == ""
+	}
+}
+
+// newXParserClient creates a client configured for free or paid API.
+func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource, isFree bool) *XParserClient {
 	cfg, _ := config.Load()
-	baseURL := config.GetBaseURL(cmd, cfg)
+
+	var baseURL string
+	if isFree {
+		baseURL = freeAPIBaseURL
+	} else {
+		baseURL = config.GetBaseURL(cmd, cfg)
+	}
 
 	httpClient := &http.Client{}
 	if verboseFlag {
@@ -208,6 +197,7 @@ func newXParserClient(cmd *cobra.Command, cred *config.CredentialSource) *XParse
 		AppID:      cred.AppID,
 		SecretCode: cred.SecretCode,
 		BaseURL:    baseURL,
+		IsFreeAPI:  isFree,
 		HTTPClient: httpClient,
 	}
 }
@@ -219,10 +209,9 @@ func (c *XParserClient) ParseFile(filePath string, opts *ParseOptions) (*ParseRe
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
-	apiURL := c.BaseURL + "/ai/service/v1/pdf_to_markdown"
-	q := opts.buildQueryParams()
-	if len(q) > 0 {
-		apiURL += "?" + q.Encode()
+	apiURL, err := c.buildURL(opts)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(data))
@@ -231,18 +220,16 @@ func (c *XParserClient) ParseFile(filePath string, opts *ParseOptions) (*ParseRe
 	}
 
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("x-ti-app-id", c.AppID)
-	req.Header.Set("x-ti-secret-code", c.SecretCode)
+	c.setAuthHeaders(req)
 
 	return c.doRequest(req)
 }
 
 // ParseURL sends a URL to the xParser API for remote file parsing.
 func (c *XParserClient) ParseURL(fileURL string, opts *ParseOptions) (*ParseResponse, error) {
-	apiURL := c.BaseURL + "/ai/service/v1/pdf_to_markdown"
-	q := opts.buildQueryParams()
-	if len(q) > 0 {
-		apiURL += "?" + q.Encode()
+	apiURL, err := c.buildURL(opts)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", apiURL, strings.NewReader(fileURL))
@@ -251,14 +238,31 @@ func (c *XParserClient) ParseURL(fileURL string, opts *ParseOptions) (*ParseResp
 	}
 
 	req.Header.Set("Content-Type", "text/plain")
-	req.Header.Set("x-ti-app-id", c.AppID)
-	req.Header.Set("x-ti-secret-code", c.SecretCode)
+	c.setAuthHeaders(req)
 
 	return c.doRequest(req)
 }
 
-func (c *XParserClient) doRequest(req *http.Request) (*ParseResponse, error) {
+func (c *XParserClient) buildURL(opts *ParseOptions) (string, error) {
+	apiURL := c.BaseURL + parseAPIPath
+	q, err := opts.buildQueryParams()
+	if err != nil {
+		return "", err
+	}
+	if len(q) > 0 {
+		apiURL += "?" + q.Encode()
+	}
+	return apiURL, nil
+}
 
+func (c *XParserClient) setAuthHeaders(req *http.Request) {
+	if !c.IsFreeAPI && c.AppID != "" && c.SecretCode != "" {
+		req.Header.Set("x-ti-app-id", c.AppID)
+		req.Header.Set("x-ti-secret-code", c.SecretCode)
+	}
+}
+
+func (c *XParserClient) doRequest(req *http.Request) (*ParseResponse, error) {
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
@@ -270,12 +274,11 @@ func (c *XParserClient) doRequest(req *http.Request) (*ParseResponse, error) {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
 	var result ParseResponse
 	if err := json.Unmarshal(body, &result); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		}
 		return nil, fmt.Errorf("failed to parse response JSON: %w", err)
 	}
 

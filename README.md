@@ -20,12 +20,11 @@ xparser-ecosystem/
 ## 功能特性
 
 - **20+ 格式支持** — PDF、DOC/DOCX、XLS/XLSX、PPT/PPTX、PNG/JPG、HTML、TXT、OFD 等
-- **多种解析模式** — `auto` / `scan`（扫描件）/ `lite`（轻量）/ `parse`（电子 PDF）/ `vlm`（视觉大模型）
-- **灵活输出** — Markdown（默认）、JSON，或同时输出两种格式
-- **批量处理** — 支持 glob、文件列表、stdin 管道输入，带进度报告
-- **图片提取** — 页面图片 / 内嵌对象图片提取与批量下载
-- **表格 & 公式** — 表格输出为 HTML/Markdown，公式输出为 LaTeX
-- **图表识别 & 文档结构树** — 可选开启
+- **Agent 友好** — 零配置免费 API、结构化错误输出、stdout/stderr 分离
+- **灵活视图** — Markdown（默认）或 JSON，通过 `--view` 切换
+- **批量处理** — 支持文件列表，带进度报告
+- **图片提取** — 内嵌对象图片提取与批量下载
+- **表格 & 公式** — 表格输出为 HTML，公式输出为 LaTeX
 - **私有部署** — 支持自定义 `base_url`
 - **Unix 友好** — 内容输出到 stdout，状态信息到 stderr，完美支持管道
 
@@ -36,122 +35,107 @@ xparser-ecosystem/
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
+curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1 | iex
+irm https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1 | iex
 ```
 
 从源码构建请参考 [cli/README.md](cli/README.md#从源码构建)。
 
-### 配置认证
+### 零配置解析（免费 API）
+
+无需注册、无需配置，直接使用：
+
+```bash
+# Markdown 到 stdout
+xparse-cli parse report.pdf
+
+# JSON 视图
+xparse-cli parse report.pdf --view json
+
+# 保存到目录
+xparse-cli parse report.pdf --output ./result/
+
+# 指定页码范围
+xparse-cli parse report.pdf --page-range "1-5"
+
+# 加密 PDF
+xparse-cli parse secret.pdf --password mypassword
+```
+
+### 付费 API（更高配额）
 
 前往 [Textin 控制台](https://www.textin.com/console/dashboard/setting) 获取 `x-ti-app-id` 和 `x-ti-secret-code`，然后：
 
 ```bash
 # 交互式配置（推荐）
-xparser auth
+xparse-cli auth
 
 # 或通过环境变量
-export XPARSER_APP_ID=your_x-ti-app-id
-export XPARSER_SECRET_CODE=your_x-ti-secret-code
+export XPARSE_APP_ID=your_x-ti-app-id
+export XPARSE_SECRET_CODE=your_x-ti-secret-code
+
+# 使用付费 API
+xparse-cli parse report.pdf --api paid
 ```
 
 | 环境变量 | 对应 Textin 凭证 |
 |----------|------------------|
-| `XPARSER_APP_ID` | `x-ti-app-id` |
-| `XPARSER_SECRET_CODE` | `x-ti-secret-code` |
+| `XPARSE_APP_ID` | `x-ti-app-id` |
+| `XPARSE_SECRET_CODE` | `x-ti-secret-code` |
 
-凭证优先级：CLI 参数 > 环境变量 > 配置文件（`~/.xparser/config.yaml`）
-
-### 解析文档
-
-```bash
-# 单文件解析，输出到 stdout
-xparser parse report.pdf
-
-# 指定输出文件
-xparser parse report.pdf -o result.md
-
-# 输出 JSON 格式
-xparser parse report.pdf -f json -o result.json
-
-# 同时输出 Markdown 和 JSON
-xparser parse report.pdf -f md,json -o ./output/
-
-# 指定解析模式
-xparser parse scanned.pdf --parse-mode scan
-xparser parse digital.pdf --parse-mode parse
-
-# 解析远程 URL
-xparser parse https://example.com/doc.pdf -o result.md
-```
+凭证优先级：CLI 参数 > 环境变量 > 配置文件（`~/.xparse-cli/config.yaml`）
 
 ### 批量处理
 
 ```bash
-# glob 模式
-xparser parse *.pdf -o ./results/
-
 # 文件列表
-xparser parse --list files.txt -o ./results/
-
-# stdin 管道
-find . -name "*.pdf" | xparser parse --stdin-list -o ./results/
+xparse-cli parse --list files.txt --output ./results/
 ```
 
-### 图片提取与下载
+### 图片下载
 
 ```bash
-# 解析时提取图片
-xparser parse report.pdf --get-image both -f json -o result.json
-
 # 从解析结果批量下载图片
-xparser download --from result.json -o ./images/
+xparse-cli download --from result.json -o ./images/
 ```
 
 ## 命令一览
 
 | 命令 | 说明 |
 |------|------|
-| `xparser parse` | 文档解析（核心命令） |
-| `xparser auth` | 配置 API 凭证 |
-| `xparser download` | 批量下载解析结果中的图片 |
-| `xparser config` | 查看/设置/重置配置 |
-| `xparser update` | 自更新到最新版本 |
-| `xparser version` | 显示版本信息 |
+| `xparse-cli parse` | 文档解析（核心命令） |
+| `xparse-cli auth` | 配置 API 凭证 |
+| `xparse-cli download` | 批量下载解析结果中的图片 |
+| `xparse-cli config` | 查看/设置/重置配置 |
+| `xparse-cli update` | 自更新到最新版本 |
+| `xparse-cli version` | 显示版本信息 |
 
-## 常用参数
+## parse 命令参数
 
-| 参数 | 说明 |
-|------|------|
-| `-f, --format` | 输出格式：`md`（默认）、`json`、`md,json` |
-| `-o, --output` | 输出文件或目录 |
-| `--parse-mode` | 解析模式：`auto`/`scan`/`lite`/`parse`/`vlm` |
-| `--table-flavor` | 表格格式：`html`/`md`/`none` |
-| `--get-image` | 图片提取：`none`/`page`/`objects`/`both` |
-| `--formula-level` | 公式识别：`0`=全部 / `1`=仅行间 / `2`=关闭 |
-| `--apply-chart` | 图表识别：`0`/`1` |
-| `--apply-document-tree` | 文档结构树：`0`/`1` |
-| `--page-start, --page-count` | PDF 页面范围 |
-| `--dpi` | PDF 渲染 DPI：`72`/`144`/`216` |
-| `-v, --verbose` | 调试模式，打印 HTTP 请求详情 |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--view` | `markdown` | 输出视图：`markdown`、`json` |
+| `--api` | _(auto)_ | API 模式：`free`、`paid` |
+| `--page-range` | | 页码范围：`"1-5"` 或 `"1-2,5-10"` |
+| `--password` | | 加密文档密码 |
+| `--include-char-details` | `false` | 返回字符级坐标和置信度 |
+| `--list` | | 从文件读取输入列表（需配合 `--output`） |
+| `-o, --output` | _(stdout)_ | 输出文件路径或目录 |
+| `-v, --verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
 
 ## 退出码
 
 | 码 | 含义 | 建议 |
 |----|------|------|
 | 0 | 成功 | — |
-| 1 | 一般错误 | 使用 `-v` 查看详情 |
-| 2 | 参数错误 | 检查参数名称和值 |
-| 3 | 认证错误 | 运行 `xparser auth` |
-| 4 | 文件错误 | 检查文件类型、大小、格式 |
-| 5 | 解析失败 | 尝试其他 `--parse-mode` |
-| 6 | 服务端错误 | 稍后重试 |
-| 7 | 余额不足 | 前往 textin.com 充值 |
+| 1 | 一般错误 / 网络异常 | 使用 `--verbose` 查看详情；重试 |
+| 2 | 参数错误 | 检查命令语法和参数值 |
+| 3 | API 返回错误 | 解析 stderr 中的 JSON 错误信息 |
 
 ## 文件限制
 

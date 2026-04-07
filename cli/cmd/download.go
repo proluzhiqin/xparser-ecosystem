@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/textin/xparser-ecosystem/cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -38,8 +39,8 @@ var downloadCmd = &cobra.Command{
 
 Two modes:
 
-  1. By image ID:  ./xparser download <id1> <id2> -o ./images/
-  2. From JSON:    ./xparser download --from result.json -o ./images/
+  1. By image ID:  ./xparse-cli download <id1> <id2> -o ./images/
+  2. From JSON:    ./xparse-cli download --from result.json -o ./images/
 
 With --from, the command reads a parse result JSON file and extracts all
 image IDs from these locations:
@@ -48,10 +49,10 @@ image IDs from these locations:
   - result.detail[].image_url   (sub-images)
 
 Downloaded images are valid for 30 days from parsing.`,
-	Example: `  ./xparser download abc123def456                       # download by ID
-  ./xparser download abc123 def456 -o ./images/          # batch by IDs
-  ./xparser download --from result.json -o ./images/     # extract IDs from JSON and download
-  ./xparser download --from ./out/report.json            # from parse output JSON`,
+	Example: `  ./xparse-cli download abc123def456                       # download by ID
+  ./xparse-cli download abc123 def456 -o ./images/          # batch by IDs
+  ./xparse-cli download --from result.json -o ./images/     # extract IDs from JSON and download
+  ./xparse-cli download --from ./out/report.json            # from parse output JSON`,
 	RunE: runDownload,
 }
 
@@ -145,7 +146,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if credSrc.AppID == "" || credSrc.SecretCode == "" {
-		return fmt.Errorf("no API credentials found. Run './xparser auth' to configure")
+		return fmt.Errorf("no API credentials found. Run './xparse-cli auth' to configure")
 	}
 
 	cfg, _ := config.Load()
@@ -164,19 +165,17 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	succeeded := 0
+	isBatchOrDir := len(imageIDs) > 1 || isDirectory(downloadOutput)
+
 	for i, imageID := range imageIDs {
 		outPath := downloadOutput
-		if len(imageIDs) > 1 || isDirectory(downloadOutput) {
-			dir := downloadOutput
-			if !isDirectory(dir) {
-				dir = filepath.Dir(dir)
-			}
-			os.MkdirAll(dir, 0o755)
+		if isBatchOrDir {
 			filename := filepath.Base(imageID)
-			if !strings.HasSuffix(strings.ToLower(filename), ".jpg") && !strings.HasSuffix(strings.ToLower(filename), ".jpeg") && !strings.HasSuffix(strings.ToLower(filename), ".png") {
+			ext := strings.ToLower(filepath.Ext(filename))
+			if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
 				filename += ".jpg"
 			}
-			outPath = filepath.Join(dir, filename)
+			outPath = filepath.Join(downloadOutput, filename)
 		}
 
 		output.Status("[%d/%d] Downloading %s...", i+1, len(imageIDs), imageID)

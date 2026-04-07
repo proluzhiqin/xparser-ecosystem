@@ -1,6 +1,6 @@
 ---
 name: xparser
-description: Textin xParser document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParser API. Supports multiple parse modes (auto, scan, lite, parse, vlm), table/formula/chart recognition, image extraction, batch processing, and piped workflows.
+description: Textin xParser document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParser API. Designed as Agent infrastructure — zero config, free API default, structured errors, stdout-friendly.
 read_when:
   - Extracting text from PDF documents
   - Converting documents to Markdown
@@ -16,82 +16,127 @@ read_when:
   - Reading or parsing PDF files
   - Converting Word documents to Markdown
   - Document parsing errors or troubleshooting
-  - VLM document parsing
-metadata: {"openclaw":{"emoji":"📄","requires":{"bins":["xparser"]},"install":[{"id":"install-unix","kind":"download","os":["darwin","linux"],"bins":["xparser"],"url":"https://dllf.intsig.net/download/2026/Solution/xparser/install.sh","label":"Install xparser CLI (Linux/macOS)"},{"id":"install-windows","kind":"download","os":["win32"],"bins":["xparser"],"url":"https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1","label":"Install xparser CLI (Windows)"}]}}
-allowed-tools: Bash(xparser:*)
+metadata: {"openclaw":{"emoji":"📄","requires":{"bins":["xparse-cli"]},"install":[{"id":"install-unix","kind":"download","os":["darwin","linux"],"bins":["xparse-cli"],"url":"https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh","label":"Install xparse-cli (Linux/macOS)"},{"id":"install-windows","kind":"download","os":["win32"],"bins":["xparse-cli"],"url":"https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1","label":"Install xparse-cli (Windows)"}]}}
+allowed-tools: Bash(xparse-cli:*)
 ---
 
-# Document Parsing with xparser
+# Document Parsing with xparse-cli
 
 ## Installation
 
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparser/install.sh | sh
+curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://dllf.intsig.net/download/2026/Solution/xparser/install.ps1 | iex
+irm https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1 | iex
 ```
 
 ### Verify installation
 
 ```bash
-xparser version
+xparse-cli version
 ```
 
-## Five parse modes
+## Core concept: View
 
-| Mode | Speed | Best for |
-|------|-------|----------|
-| `scan` (**default**) | Medium | Scanned docs, images, mixed documents — treats everything as images |
-| `parse` | Fastest | Born-digital PDFs only (not scanned), no formula/chart support |
-| `vlm` | Slow | Complex layouts, academic papers, mixed content — highest accuracy |
-| `lite` | Fast | Lightweight — tables and text only, no full layout analysis |
-| `auto` | Auto | Unsure about document type — engine selects automatically |
+Agent only needs to understand one concept: **View** — different presentations of the same parse result.
 
-### Mode comparison
+| View | Description |
+|------|-------------|
+| `markdown` (default) | Markdown text, ready for LLM consumption |
+| `json` | Full structured JSON with all parse details |
 
-| | `scan` | `parse` | `vlm` | `lite` | `auto` |
-|---|---|---|---|---|---|
-| Scanned docs / images | Yes | No | Yes | Yes | Yes |
-| Electronic PDFs | Yes | **Best** | Yes | Yes | Yes |
-| Table recognition | Yes | Yes | Yes | Yes | Yes |
-| Formula recognition | Yes | No | Yes | No | Yes |
-| Hallucination risk | None | None | **Yes** | None | None |
+## Quick start — zero config
 
-## Core workflow
-
-1. **Install**: run the install command above
-2. **Authenticate**: `xparser auth` (requires Textin API credentials from <https://www.textin.com/console/dashboard/setting>)
-3. **Parse**: `xparser parse report.pdf` for Markdown output
-4. **Save output**: add `-o ./out/` to save to directory
-5. **Extract images**: parse with `--get-image objects -f json`, then `xparser download --from result.json`
-
-## Authentication
-
-Every parse call needs Textin API credentials. Get them at <https://www.textin.com/console/dashboard/setting>.
-
-| CLI parameter / env var | Textin credential |
-|-------------------------|-------------------|
-| `--app-id` / `XPARSER_APP_ID` | `x-ti-app-id` |
-| `--secret-code` / `XPARSER_SECRET_CODE` | `x-ti-secret-code` |
-
-When prompting the user for credentials, mention the Textin names (`x-ti-app-id`, `x-ti-secret-code`) so they know which values to copy from the console.
+xparse-cli works out of the box with no API key — it defaults to the free API:
 
 ```bash
-xparser auth                          # interactive setup → saves to ~/.xparser/config.yaml
-xparser auth --show                   # show current credentials (masked)
+# Markdown to stdout (free API, zero config)
+xparse-cli parse report.pdf
+
+# JSON view
+xparse-cli parse report.pdf --view json
+
+# Save to directory
+xparse-cli parse report.pdf --output ./result/
+
+# Parse specific pages
+xparse-cli parse report.pdf --page-range "1-5"
+
+# Batch from file list
+xparse-cli parse --list files.txt --output ./result/
 ```
 
-Token resolution order: `--app-id`/`--secret-code` flags > `XPARSER_APP_ID`/`XPARSER_SECRET_CODE` env > `~/.xparser/config.yaml`.
+No registration, no API key, no configuration needed for first use.
 
-For private deployments, set `--base-url https://your-server.com` or `xparser config set base_url https://your-server.com`.
+## Authentication (for paid API)
 
-## Supported input formats
+The paid API offers higher quotas and priority. Get credentials at <https://www.textin.com/console/dashboard/setting>.
+
+| Env var | Textin credential |
+|---------|-------------------|
+| `XPARSE_APP_ID` | `x-ti-app-id` |
+| `XPARSE_SECRET_CODE` | `x-ti-secret-code` |
+
+```bash
+# Interactive setup (saves to ~/.xparse-cli/config.yaml)
+xparse-cli auth
+
+# Or set environment variables
+export XPARSE_APP_ID=your_app_id
+export XPARSE_SECRET_CODE=your_secret_code
+
+# Use paid API explicitly
+xparse-cli parse report.pdf --api paid
+```
+
+**API selection logic:**
+- No `--api` flag: if credentials exist, uses paid; otherwise free
+- `--api free`: forces free API regardless of credentials
+- `--api paid`: forces paid API (requires credentials)
+
+## Commands
+
+### parse — The main command
+
+```bash
+xparse-cli parse <file-or-url>
+xparse-cli parse <file-or-url> --output <file_path>
+xparse-cli parse --list files.txt --output ./result/
+```
+
+#### Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--view` | | `markdown` | Output view: `markdown`, `json` |
+| `--api` | | _(auto)_ | API mode: `free`, `paid` |
+| `--page-range` | | | Page range: `"1-5"` or `"1-2,5-10"` |
+| `--password` | | | Password for encrypted documents |
+| `--include-char-details` | | `false` | Include character-level coordinates and confidence |
+| `--list` | | | Read input list from file (one path per line); requires `--output` |
+| `--output` | `-o` | _(stdout)_ | Output file path or directory |
+
+#### API capabilities (always on by default)
+
+These capabilities are automatically enabled — Agent gets the most complete result without configuration:
+
+| Capability | Default |
+|------------|---------|
+| Heading hierarchy | On |
+| Inline objects (images in text) | On |
+| Image data | On |
+| Table structure (HTML) | On |
+| Per-page results | On |
+| Title tree / catalog | On |
+| Character details | **Off** (use `--include-char-details` to enable) |
+
+### Supported input formats
 
 | Category | Extensions |
 |----------|-----------|
@@ -105,360 +150,202 @@ For private deployments, set `--base-url https://your-server.com` or `xparser co
 | Other | `.ofd` |
 | URL | `http://…`, `https://…` |
 
-**Limits:** files ≤ 500 MB, PDFs ≤ 1000 pages, Excel ≤ 2000 rows / 100 cols per sheet, TXT ≤ 100 KB, images 20–20000 px (aspect ratio < 2) or 20–10000 px (others).
-
-## Commands
-
-### parse — The main command
-
-```bash
-xparser parse report.pdf                              # Markdown to stdout
-xparser parse report.pdf -o report.md                 # Save to file
-xparser parse report.pdf -o ./out/                    # Save to directory
-xparser parse report.pdf -f json                      # Full JSON output
-xparser parse report.pdf -f md,json -o ./out/         # Both formats (needs -o dir)
-xparser parse report.pdf --parse-mode vlm             # VLM mode
-xparser parse *.pdf -o ./results/                     # Batch convert
-xparser parse https://example.com/doc.pdf             # Parse a URL
-cat doc.pdf | xparser parse --stdin -o result.md      # Pipe in
-```
-
-#### parse flags
-
-**Output:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--output` | `-o` | _(stdout)_ | Output path (file or directory) |
-| `--format` | `-f` | `md` | Output formats: `md`, `json` (comma-separated) |
-
-**Parse mode & pages:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--parse-mode` | | `scan` | Parse mode: `auto`, `scan`, `lite`, `parse`, `vlm` |
-| `--pdf-pwd` | | | Password for encrypted PDFs |
-| `--page-start` | | `0` | Start page (0-indexed) |
-| `--page-count` | | `1000` | Number of pages to parse (max 1000) |
-| `--dpi` | | `144` | PDF coordinate DPI: `72`, `144`, `216` |
-
-**Tables & structure:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--table-flavor` | | `html` | Table format in Markdown: `html`, `md`, `none` |
-| `--apply-document-tree` | | `1` | Generate heading hierarchy: `0` off, `1` on |
-| `--paratext-mode` | | `annotation` | Non-body text display: `none`, `annotation`, `body` |
-| `--apply-merge` | | `1` | Merge paragraphs and tables: `0` off, `1` on |
-
-**Images:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--get-image` | | `none` | Image extraction: `none`, `page`, `objects`, `both` |
-| `--image-output-type` | | `default` | Image output type: `default` (URL/ID), `base64str` |
-
-**Recognition:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--formula-level` | | `0` | Formula recognition: `0` all, `1` display only, `2` off |
-| `--apply-chart` | | `0` | Chart recognition (output as table): `0` off, `1` on |
-| `--underline-level` | | `0` | Underline detection (scan mode only): `0` off, `1` empty lines, `2` all |
-| `--apply-image-analysis` | | `0` | LLM-based image analysis: `0` off, `1` on |
-| `--crop-dewarp` | | `0` | Crop and deskew: `0` off, `1` on |
-| `--remove-watermark` | | `0` | Watermark removal: `0` off, `1` on |
-
-**Output detail:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--markdown-details` | | `1` | Return `detail` field with element info: `0` off, `1` on |
-| `--page-details` | | `1` | Return `pages` field with per-page results: `0` off, `1` on |
-| `--raw-ocr` | | `0` | Return full OCR results with char coordinates: `0` off, `1` on |
-| `--char-details` | | `0` | Return `char_pos` field with character positions: `0` off, `1` on |
-| `--catalog-details` | | `0` | Return `catalog` field with TOC info: `0` off, `1` on |
-| `--get-excel` | | `0` | Return Excel base64 result: `0` off, `1` on |
-
-**Input modes:**
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--list` | | | Read input list from file (one path per line) |
-| `--stdin-list` | | `false` | Read file list from stdin |
-| `--stdin` | | `false` | Read file content from stdin |
-| `--stdin-name` | | `stdin.pdf` | Filename hint for stdin mode |
-| `--timeout` | | `600` | Timeout in seconds |
-
 ### download — Fetch images
 
 ```bash
-xparser download --from result.json -o ./images/  # From parse result JSON (recommended)
-xparser download <image_id> -o ./images/           # By image ID
-xparser download id1 id2 id3 -o ./images/          # Batch by IDs
-xparser download --from result.json extra_id -o .  # Mixed: JSON + manual IDs
+xparse-cli download --from result.json -o ./images/
+xparse-cli download <image_id> -o ./images/
 ```
-
-`--from` automatically extracts image IDs from `metrics[].image_id`, `result.pages[].image_id`, `result.detail[].image_url`, deduplicates, and downloads each one.
-
-Image IDs are valid for **30 days** after parsing.
 
 ### config — Manage settings
 
 ```bash
-xparser config show                              # Display all settings
-xparser config set base_url https://my-server    # Set a value
-xparser config set app_id YOUR_ID                # Set app ID
-xparser config reset                             # Reset to defaults
-xparser config path                              # Show config file location
+xparse-cli config show
+xparse-cli config set base_url https://my-server
+xparse-cli config reset
+xparse-cli config path
 ```
-
-Keys: `app_id`, `secret_code`, `base_url`.
 
 ### update — Self-update
 
 ```bash
-xparser update              # Download and install latest version
-```
-
-### version
-
-```bash
-xparser version             # Show version, commit, Go version, OS/arch
+xparse-cli update
 ```
 
 ## Recipes
 
+### Read document content (Scene 1)
+
+```bash
+# Default: markdown text to stdout
+xparse-cli parse report.pdf
+
+# Full JSON for programmatic use
+xparse-cli parse report.pdf --view json
+```
+
+### Parse specific pages (Scene 2)
+
+```bash
+xparse-cli parse book.pdf --page-range "1-5"
+xparse-cli parse book.pdf --page-range "1-2,5-10"
+```
+
+### Encrypted PDF (Scene 3)
+
+```bash
+xparse-cli parse secret.pdf --password mypassword
+```
+
+### Character-level details (Scene 4)
+
+```bash
+# Warning: significantly larger response
+xparse-cli parse report.pdf --view json --include-char-details
+```
+
+### Save output to file
+
+```bash
+# Save to directory (filename derived from input)
+xparse-cli parse report.pdf --output ./result/
+
+# Save to specific file
+xparse-cli parse report.pdf --output report.md
+```
+
 ### Batch processing
 
 ```bash
-# All PDFs in current directory
-xparser parse *.pdf -o ./results/
-
 # From a file list
-xparser parse --list files.txt -o ./results/
-
-# From find/pipe
-find ./docs -name "*.pdf" | xparser parse --stdin-list -o ./results/
+xparse-cli parse --list files.txt --output ./results/
 ```
 
-Batch mode always requires `-o <directory>`. Progress is reported on stderr as `[n/total]`.
-
-### Image extraction
-
-Two steps: parse with `--get-image` to get JSON result, then use `--from` to batch download.
-
-```bash
-# Step 1: parse with image extraction, save JSON result
-xparser parse report.pdf --get-image objects -f json -o ./out/
-
-# Step 2: download all images directly from the JSON result
-xparser download --from ./out/report.json -o ./out/images/
-```
-
-For inline base64 images (larger response, but no second step):
-```bash
-xparser parse report.pdf --get-image objects --image-output-type base64str -o ./out/
-```
-
-### Tables
-
-Tables default to HTML. For Markdown tables:
-```bash
-xparser parse report.pdf --table-flavor md
-```
-
-Use `--table-flavor none` to skip table recognition entirely.
-
-### Formulas and charts
-
-```bash
-xparser parse paper.pdf --formula-level 0              # All formulas (default)
-xparser parse paper.pdf --formula-level 1              # Display formulas only
-xparser parse paper.pdf --apply-chart 1                # Charts → tables
-```
-
-### PDF page ranges
-
-```bash
-xparser parse book.pdf --page-start 10 --page-count 10   # Pages 10–19
-xparser parse secret.pdf --pdf-pwd mypassword             # Encrypted PDF
-```
+Batch mode requires `--output <directory>`. Progress is reported on stderr as `[n/total]`.
 
 ### Piping into other tools
 
-xParser outputs Markdown to stdout by default (status goes to stderr), so it pipes cleanly:
+xParser outputs content to stdout, status/logs to stderr — clean piping:
 
 ```bash
 # Parse and search
-xparser parse report.pdf | grep "revenue"
+xparse-cli parse report.pdf | grep "revenue"
 
-# Parse and feed to another model
-xparser parse paper.pdf --parse-mode vlm | llm "summarize this paper"
-
-# Parse from stdin
-cat report.pdf | xparser parse --stdin
+# Parse and feed to LLM
+xparse-cli parse paper.pdf | llm "summarize this paper"
 ```
-
-### JSON output for programmatic use
-
-```bash
-# Full structured JSON
-xparser parse report.pdf -f json
-
-# Minimal JSON (no detail/pages arrays — smaller payload)
-xparser parse report.pdf -f json --markdown-details 0 --page-details 0
-```
-
-**Note:** `lite` and `vlm` modes return an `elements` array instead of the `detail`/`pages` structure used by other modes.
-
-## Output behavior
-
-- **No `-o` flag**: result goes to stdout; status/progress messages go to stderr
-- **With `-o` flag**: result saved to file/directory; progress on stderr
-- **`-f md,json`**: requires `-o <directory>`
-- **`--get-excel 1`**: Excel file saved alongside Markdown
-- **Batch mode**: requires `-o <directory>`
-
-## General rules
-
-When using this skill on behalf of the user:
-
-- **Quote file paths** that contain spaces or special characters with double quotes. Example: `xparser parse "report 01.pdf"`, NOT `xparser parse report 01.pdf`.
-- **Don't run commands blindly on errors** — explain the exit code and suggest a fix.
-- On failure, use `-v` to show HTTP details if the cause is unclear.
-- When the user asks to **upgrade** or **update**, run the install command to get the latest binary before using new features.
-
-### Choosing between modes
-
-The agent MUST follow this decision logic:
-
-1. **Default to `scan`** when:
-   - User says nothing special about mode
-   - Document is a scanned PDF or image
-   - Mixed document types (scanned + electronic)
-
-2. **Use `parse`** when:
-   - User explicitly mentions "electronic PDF" or wants fastest speed
-   - Document is confirmed to be a born-digital PDF (not scanned)
-   - No formula or chart recognition needed
-
-3. **Use `vlm`** when:
-   - User mentions "VLM" or wants highest accuracy
-   - Document has complex layouts, academic papers, intricate tables
-   - User prioritizes accuracy over speed
-
-4. **Use `lite`** when:
-   - User only needs tables and text, mentions "lightweight"
-   - No formula, chart, or full layout analysis needed
-   - Speed is important but document may include scanned content
-
-5. **Use `auto`** when:
-   - User explicitly says "auto" or is unsure about document type
-   - Processing a batch of mixed document types
-
-**Note:** `vlm` mode may produce hallucinated text in rare cases. When the user prioritizes reliability and no-hallucination guarantee, suggest `scan` (default) instead. When accuracy on complex layouts matters most, suggest `vlm` with this caveat.
-
-### Default output directory
-
-When the agent saves output on behalf of the user and no `-o` is specified, generate:
-
-```
-~/xParser-Skill/<name>_<hash>/
-```
-
-**Naming rules:**
-
-- `<name>`: derived from the source, then **sanitized** for safe directory names.
-  - For URLs: last path segment (e.g. `https://example.com/doc.pdf` → `doc`)
-  - For local files: filename without extension (e.g. `report.pdf` → `report`)
-  - **Sanitization**: replace spaces and shell-unsafe characters (`space`, `(`, `)`, `[`, `]`, `&`, `'`, `"`, `!`, `#`, `$`, `` ` ``) with `_`. Collapse consecutive `_` into one. Keep alphanumeric, `-`, `_`, `.`, and CJK characters.
-- `<hash>`: first 6 characters of the MD5 hash of the **full original source path or URL** (before sanitization). This ensures:
-  - Different URLs with similar basenames get unique directories
-  - Re-running the same source reuses the same directory (idempotent)
-
-**How the agent should generate the hash:**
-
-```bash
-echo -n "<full_source_path>" | md5sum | cut -c1-6
-```
-
-**Examples:**
-
-| Source | Output directory |
-|--------|-----------------|
-| `report.pdf` | `~/xParser-Skill/report_f1a2b3/` |
-| `./docs/年报2024.pdf` | `~/xParser-Skill/年报2024_c7e9d4/` |
-| `https://example.com/q1.pdf` | `~/xParser-Skill/q1_a3f2b1/` |
-
-**When the user specifies `-o`**: use the user's path as-is, do NOT override with the default directory.
-
-### Post-parse friendly hints
-
-After a successful parse, the agent MAY append a brief hint (one per session, don't repeat):
-
-- If no `--get-image`: "Add `--get-image objects` to also extract images."
-- If `--table-flavor` not set: "Tables default to HTML; use `--table-flavor md` for Markdown."
-- If `scan` mode on a simple electronic PDF: "`--parse-mode parse` would be faster for this type of document."
-
-Keep the hint to ONE short sentence. Do NOT repeat if the user has already seen it in this session.
 
 ## Exit codes
 
 | Code | Meaning | Recovery |
 |------|---------|----------|
 | 0 | Success | — |
-| 1 | General error | Check network; retry; add `-v` for HTTP debug |
-| 2 | Bad parameters | Check flag names and values |
-| 3 | Auth failure | Run `xparser auth` to configure credentials |
-| 4 | File error | Check file type/size/dimensions, or supply `--pdf-pwd` |
-| 5 | Parse failed | Document may be corrupted; try a different `--parse-mode` |
-| 6 | Server error | Textin service issue; retry later |
-| 7 | Quota exhausted | Recharge at <https://www.textin.com> |
+| 1 | General API or unknown error | Check network connectivity; retry; use `--verbose` for details |
+| 2 | Invalid parameters / usage error | Check command syntax and flag values |
+| 3 | API returned error (structured JSON on stderr) | Parse stderr JSON for error_type, suggestion, retryable |
 
-### API error code mapping
+### Structured error output (exit code 3)
 
-| API code | Exit | Description |
-|----------|------|-------------|
-| 200 | 0 | Success |
-| 40101 | 3 | Missing app-id or secret-code |
-| 40102 | 3 | Invalid credentials |
-| 40103 | 3 | IP not whitelisted |
-| 40003 | 7 | Insufficient balance |
-| 40004 | 2 | Parameter error |
-| 40301 | 4 | Image type unsupported |
-| 40302 | 4 | File exceeds 500 MB |
-| 40303 | 4 | File type unsupported |
-| 40304 | 4 | Image dimensions out of range |
-| 40305 | 4 | No file uploaded |
-| 40422 | 4 | File corrupted |
-| 40423 | 4 | PDF password required / incorrect |
-| 40424 | 4 | Page number out of range |
-| 40425 | 4 | Input file format not supported |
-| 40427 | 2 | Invalid DPI value |
-| 40428 | 5 | Office conversion failed |
-| 50207 | 5 | Partial pages failed |
-| 30203 | 6 | Server error, retry later |
-| 500 | 6 | Server internal error |
+When exit code is 3, stderr contains a JSON object:
+
+```json
+{
+  "error_type": "password_error",
+  "code": 40422,
+  "message": "Password required or incorrect",
+  "suggestion": "Use --password to provide the correct document password",
+  "retryable": false
+}
+```
+
+Fields:
+- `error_type`: category — `auth_error`, `password_error`, `page_range_error`, `format_error`, `file_error`, `param_error`, `parse_error`, `server_error`, `partial_error`, `unknown_error`
+- `code`: API error code
+- `message`: human-readable description
+- `suggestion`: recommended fix action
+- `retryable`: whether Agent should retry
+
+### API error code reference
+
+| API code | error_type | Description |
+|----------|-----------|-------------|
+| 40101 | auth_error | Missing credentials |
+| 40102 | auth_error | Invalid credentials |
+| 40103 | auth_error | Quota exceeded or account suspended |
+| 40422 | password_error | Password required or incorrect |
+| 40424 | page_range_error | Page number out of range |
+| 40425 | format_error | File format not supported |
+| 40426 | file_error | File is corrupted or unreadable |
+| 40427 | param_error | Invalid DPI value |
+| 40428 | parse_error | Office file conversion failed |
+| 40429 | file_error | PDF content is empty |
+| 500 | server_error | Server internal error |
+| 50207 | partial_error | Some pages failed to parse |
+
+## Output behavior
+
+- **No `--output`**: result goes to stdout; status/progress on stderr
+- **With `--output`**: result saved to file/directory; progress on stderr
+- **Batch mode**: requires `--output <directory>`
+
+## General rules
+
+When using this skill on behalf of the user:
+
+- **Quote file paths** with spaces: `xparse-cli parse "report 01.pdf"`
+- **Don't run commands blindly on errors** — parse the structured error JSON and suggest a fix
+- On exit code 3, read the `retryable` field to decide whether to retry or ask the user
+- On exit code 1, add `--verbose` flag to diagnose network issues
+- When the user asks to **upgrade**, run the install command first
+
+### Default output directory
+
+When saving output on behalf of the user and no `--output` is specified, generate:
+
+```
+~/xparse-cli/<name>_<hash>/
+```
+
+**Naming rules:**
+
+- `<name>`: filename without extension, sanitized (replace spaces and shell-unsafe characters with `_`)
+- `<hash>`: first 6 characters of MD5 of the full source path
+
+```bash
+echo -n "<full_source_path>" | md5sum | cut -c1-6
+```
+
+| Source | Output directory |
+|--------|-----------------|
+| `report.pdf` | `~/xparse-cli/report_f1a2b3/` |
+
+When the user specifies `--output`, use their path as-is.
+
+### Post-parse hints
+
+After a successful parse, the agent MAY append ONE brief hint (don't repeat in the same session):
+
+- If `--view json` not used: "Use `--view json` for full structured data."
+- If parsing a large PDF: "Use `--page-range` to parse specific pages."
+- If error 40422: "This PDF is encrypted. Use `--password` to provide the password."
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| "no API credentials found" | `xparser auth` or set `XPARSER_APP_ID` + `XPARSER_SECRET_CODE` |
-| Timeout on large files | `--timeout 1200` |
-| Poor extraction quality | Try different `--parse-mode`, e.g. `vlm` |
-| Tables look wrong | `--table-flavor md` for Markdown, or `--table-flavor html` |
-| Need PDF password | `--pdf-pwd your_password` |
-| Page out of range | Adjust `--page-start` / `--page-count` |
-| Multiple formats to stdout | Add `-o <dir>` |
-| Private deployment | `--base-url https://your-server.com` |
-| Batch partially failed | Check stderr for per-file status; succeeded files are saved |
+| No output, exit 1 | Check network; retry; add `--verbose` |
+| Exit 2 | Check flag names and values |
+| Exit 3 with password_error | Add `--password` |
+| Exit 3 with page_range_error | Adjust `--page-range` |
+| Exit 3 with format_error | Check file format (see supported list) |
+| Want paid API but no credentials | `xparse-cli auth` or set env vars |
+| Large response needed | Add `--include-char-details` only when needed |
+| Batch partially failed | Check stderr for per-file errors |
 
 ## Notes
 
 - All status/progress messages go to stderr; only document content goes to stdout
-- `lite` and `vlm` modes return `elements` array instead of `detail`/`pages` structure
-- Batch mode reports progress on stderr as `[n/total]`
-- Credentials are stored in `~/.xparser/config.yaml` after `xparser auth`
-- Image IDs from `--get-image` are valid for 30 days
+- Free API works with zero configuration — no registration needed
+- Paid API requires `XPARSE_APP_ID` + `XPARSE_SECRET_CODE`
+- Credentials stored in `~/.xparse-cli/config.yaml` after `xparse-cli auth`
+- Token resolution: `--app-id`/`--secret-code` flags > env vars > config file

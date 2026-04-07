@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
-	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 
 var authShow bool
@@ -64,8 +63,8 @@ func runAuthShow() error {
 }
 
 func runAuthSetup() error {
-	output.Status("Textin xParser API Credential Setup")
-	output.Status("Get your credentials from: https://www.textin.com/console/dashboard/setting")
+	fmt.Println("Textin xParser API Credential Setup")
+	fmt.Println("Get your credentials from: https://www.textin.com/console/dashboard/setting")
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)
@@ -119,7 +118,7 @@ func runAuthSetup() error {
 		return fmt.Errorf("failed to save credentials: %w", err)
 	}
 
-	output.Status("Credentials saved successfully to ~/.xparse-cli/config.yaml")
+	fmt.Println("Credentials saved to ~/.xparse-cli/config.yaml")
 	return nil
 }
 

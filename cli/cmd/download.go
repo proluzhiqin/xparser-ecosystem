@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 
 var (
@@ -93,7 +91,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if len(extracted) == 0 {
 			return fmt.Errorf("no image URLs found in %s", downloadFrom)
 		}
-		output.Status("Found %d image(s) in %s", len(extracted), downloadFrom)
+
 		imageURLs = append(imageURLs, extracted...)
 	}
 
@@ -136,63 +134,49 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			outPath = filepath.Join(downloadOutput, filename)
 		}
 
-		output.Status("[%d/%d] Downloading %s...", i+1, len(imageURLs), filepath.Base(imageURL))
-
 		resp, err := httpClient.Get(imageURL)
 		if err != nil {
-			output.Errorf("[%d/%d] %s - request failed: %v", i+1, len(imageURLs), filepath.Base(imageURL), err)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s - request failed: %v\n", i+1, len(imageURLs), filepath.Base(imageURL), err)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			output.Errorf("[%d/%d] %s - HTTP %d", i+1, len(imageURLs), filepath.Base(imageURL), resp.StatusCode)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s - HTTP %d\n", i+1, len(imageURLs), filepath.Base(imageURL), resp.StatusCode)
 			continue
 		}
 
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 			resp.Body.Close()
-			output.Errorf("[%d/%d] %s - mkdir failed: %v", i+1, len(imageURLs), filepath.Base(imageURL), err)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s - mkdir failed: %v\n", i+1, len(imageURLs), filepath.Base(imageURL), err)
 			continue
 		}
 
 		f, err := os.Create(outPath)
 		if err != nil {
 			resp.Body.Close()
-			output.Errorf("[%d/%d] %s - create file failed: %v", i+1, len(imageURLs), filepath.Base(imageURL), err)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s - create file failed: %v\n", i+1, len(imageURLs), filepath.Base(imageURL), err)
 			continue
 		}
 
-		n, err := io.Copy(f, resp.Body)
+		if _, err := io.Copy(f, resp.Body); err != nil {
+			resp.Body.Close()
+			f.Close()
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s - write failed: %v\n", i+1, len(imageURLs), filepath.Base(imageURL), err)
+			continue
+		}
 		resp.Body.Close()
 		f.Close()
-		if err != nil {
-			output.Errorf("[%d/%d] %s - write failed: %v", i+1, len(imageURLs), filepath.Base(imageURL), err)
-			continue
-		}
-
-		output.Status("[%d/%d] Saved: %s (%s)", i+1, len(imageURLs), outPath, humanSize(int(n)))
 		succeeded++
 	}
 
 	if succeeded < len(imageURLs) {
 		return fmt.Errorf("%d/%d downloads failed", len(imageURLs)-succeeded, len(imageURLs))
 	}
-	output.Status("Downloaded %d image(s)", succeeded)
 	return nil
 }
 
 func isDirectory(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-func humanSize(n int) string {
-	if n < 1024 {
-		return fmt.Sprintf("%d B", n)
-	}
-	if n < 1024*1024 {
-		return fmt.Sprintf("%.1f KB", float64(n)/1024)
-	}
-	return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
 }

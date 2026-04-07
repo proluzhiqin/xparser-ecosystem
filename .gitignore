@@ -1,10 +1,13 @@
 # Compiled binaries
 dist/
-test
+cli/xparse-cli
+
+# Test artifacts
+test/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# claude files
+# Claude files
 .claude

@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
-	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 
 var configCmd = &cobra.Command{
@@ -84,7 +83,7 @@ var configSetCmd = &cobra.Command{
 			return fmt.Errorf("failed to save config: %w", err)
 		}
 
-		output.Status("Set %s successfully", key)
+		fmt.Printf("Set %s successfully\n", key)
 		return nil
 	},
 }
@@ -99,7 +98,7 @@ var configResetCmd = &cobra.Command{
 		if err := config.Save(&config.Config{}); err != nil {
 			return fmt.Errorf("failed to reset config: %w", err)
 		}
-		output.Status("Configuration reset to defaults")
+		fmt.Println("Configuration reset to defaults")
 		return nil
 	},
 }

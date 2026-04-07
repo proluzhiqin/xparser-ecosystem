@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 
 var updateCmd = &cobra.Command{
@@ -29,16 +27,11 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	output.Status("Current version: %s", version)
-	output.Status("Downloading latest version...")
-
 	binaryName := fmt.Sprintf("xparse-cli-%s-%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		binaryName += ".exe"
 	}
 	downloadURL := fmt.Sprintf("%s/latest/%s", cdnBaseURL, binaryName)
-
-	output.Status("  %s", downloadURL)
 
 	execPath, err := os.Executable()
 	if err != nil {
@@ -70,7 +63,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	os.Remove(oldPath)
-	output.Status("Updated successfully!")
 	return nil
 }
 

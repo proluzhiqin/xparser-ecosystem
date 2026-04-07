@@ -36,71 +36,38 @@ curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh 
 irm https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1 | iex
 ```
 
-### Verify installation
+### Verify
 
 ```bash
 xparse-cli version
 ```
 
-## Core concept: View
+## Quick start
 
-Agent only needs to understand one concept: **View** — different presentations of the same parse result.
-
-| View | Description |
-|------|-------------|
-| `markdown` (default) | Markdown text, ready for LLM consumption |
-| `json` | Full structured JSON with all parse details |
-
-## Quick start — zero config
-
-xparse-cli works out of the box with no API key — it defaults to the free API.
-No registration, no API key, no configuration needed for first use.
+Zero config — defaults to free API, no registration needed.
 
 ```bash
 xparse-cli parse report.pdf                        # Markdown to stdout
 xparse-cli parse report.pdf --view json             # JSON view
-xparse-cli parse report.pdf --output ./result/      # Save to directory
+xparse-cli parse report.pdf -o ./result/            # Save to directory
 xparse-cli parse report.pdf --page-range "1-5"      # Specific pages
-xparse-cli parse --list files.txt --output ./result/ # Batch mode
+xparse-cli parse secret.pdf --password mypassword   # Encrypted PDF
+xparse-cli parse --list files.txt -o ./result/      # Batch mode
 ```
 
-## Authentication (for paid API)
-
-The paid API offers higher quotas and priority. Get credentials at <https://www.textin.com/console/dashboard/setting>.
-
-| Env var | Textin credential |
-|---------|-------------------|
-| `XPARSE_APP_ID` | `x-ti-app-id` |
-| `XPARSE_SECRET_CODE` | `x-ti-secret-code` |
+## Authentication (paid API)
 
 ```bash
-# Interactive setup (saves to ~/.xparse-cli/config.yaml)
-xparse-cli auth
-
-# Or set environment variables
+xparse-cli auth                                     # Interactive setup
+# or
 export XPARSE_APP_ID=your_app_id
 export XPARSE_SECRET_CODE=your_secret_code
-
-# Use paid API explicitly
 xparse-cli parse report.pdf --api paid
 ```
 
-**API selection logic:**
-- No `--api` flag: if credentials exist, uses paid; otherwise free
-- `--api free`: forces free API regardless of credentials
-- `--api paid`: forces paid API (requires credentials)
+API selection: no `--api` → paid if credentials exist, else free. `--api free` → force free. `--api paid` → force paid.
 
-## Commands
-
-### parse — The main command
-
-```bash
-xparse-cli parse <file-or-url>
-xparse-cli parse <file-or-url> --output <file_path>
-xparse-cli parse --list files.txt --output ./result/
-```
-
-#### Flags
+## Flags
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -109,205 +76,168 @@ xparse-cli parse --list files.txt --output ./result/
 | `--page-range` | | | Page range: `"1-5"` or `"1-2,5-10"` |
 | `--password` | | | Password for encrypted documents |
 | `--include-char-details` | | `false` | Include character-level coordinates and confidence |
-| `--list` | | | Read input list from file (one path per line); requires `--output` |
+| `--list` | | | Read input list from file; requires `--output` |
 | `--output` | `-o` | _(stdout)_ | Output file path or directory |
 | `--verbose` | `-v` | `false` | Print HTTP request details for debugging |
 
-#### API capabilities (always on by default)
+## Supported formats
 
-These capabilities are automatically enabled — Agent gets the most complete result without configuration:
+PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WebP, DOC, DOCX, XLS, XLSX, CSV, PPT, PPTX, HTML, MHTML, TXT, RTF, OFD, URL (`http://…`)
 
-| Capability | Default |
-|------------|---------|
-| Heading hierarchy | On |
-| Inline objects (images in text) | On |
-| Image data | On |
-| Table structure (HTML) | On |
-| Per-page results | On |
-| Title tree / catalog | On |
-| Character details | **Off** (use `--include-char-details` to enable) |
-
-### Supported input formats
-
-| Category | Extensions |
-|----------|-----------|
-| PDF | `.pdf` |
-| Images | `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.gif`, `.webp` |
-| Word | `.doc`, `.docx` |
-| Excel | `.xls`, `.xlsx`, `.csv` |
-| PowerPoint | `.ppt`, `.pptx` |
-| Web | `.html`, `.mhtml` |
-| Text | `.txt`, `.rtf` |
-| Other | `.ofd` |
-| URL | `http://…`, `https://…` |
-
-### download — Download element images
+## Other commands
 
 ```bash
-xparse-cli download --from result.json -o ./images/
-xparse-cli download <image_url> -o ./images/
+xparse-cli download --from result.json -o ./images/ # Download element images
+xparse-cli config show                               # Show config
+xparse-cli update                                    # Self-update
 ```
 
-### config — Manage settings
+---
+
+## How Agent captures and handles errors
+
+CLI output contract:
+- **stdout** → document content only (markdown or json)
+- **stderr** → error messages only
+- **$?** → exit code: 0, 1, 2, or 3
+
+### Capture pattern
 
 ```bash
-xparse-cli config show
-xparse-cli config set base_url https://my-server
-xparse-cli config reset
-xparse-cli config path
+RESULT=$(xparse-cli parse "$FILE" 2>stderr.tmp)
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
+  # Success — $RESULT contains markdown/json
+  echo "$RESULT"
+else
+  ERROR=$(cat stderr.tmp)
+  # Route by exit code — see decision table below
+fi
+rm -f stderr.tmp
 ```
 
-### update — Self-update
+### Decision table
 
-```bash
-xparse-cli update
+```
+EXIT_CODE=0  →  success, use stdout content
+EXIT_CODE=1  →  match stderr against Exit 1 table → retry or escalate
+EXIT_CODE=2  →  match stderr against Exit 2 table → fix command, re-run
+EXIT_CODE=3  →  parse "api_code：message" from stderr → match Exit 3 table → retry / fix / escalate
 ```
 
-## Recipes
+---
 
-```bash
-# Encrypted PDF
-xparse-cli parse secret.pdf --password mypassword
+## Exit 1 — general failures (stderr = plain text)
 
-# Character-level details (significantly larger response)
-xparse-cli parse report.pdf --view json --include-char-details
+Agent matches the **exact stderr string** to decide action.
 
-# Non-contiguous page ranges
-xparse-cli parse book.pdf --page-range "1-2,5-10"
+| stderr | category | action | retryable |
+|--------|----------|--------|-----------|
+| `credentials configuration error` | auth | Ask human: run `xparse-cli auth` or set env vars | no |
+| `network or request failed` | technical | Retry with `--verbose`; max 2 retries, 2s backoff | yes |
+| `API returned success but no result data` | technical | Retry once; escalate if persists | yes |
+| `failed to create output directory` | filesystem | Ask human: check directory permissions | no |
+| `batch completed with errors` | technical | Some files failed — check per-file exit 3 errors | no |
+| `failed to save result` | filesystem | Ask human: check disk space / write permissions | no |
 
-# Save to specific file
-xparse-cli parse report.pdf --output report.md
+## Exit 2 — command errors (stderr = plain text)
 
-# Piping — stdout is content only, stderr is status/logs
-xparse-cli parse report.pdf | grep "revenue"
-xparse-cli parse paper.pdf | llm "summarize this paper"
-```
+Agent **always** fixes the command and re-runs. Never retry the same command.
 
-Batch mode requires `--output <directory>`. Progress is reported on stderr as `[n/total]`.
+| stderr | fix |
+|--------|-----|
+| `invalid --view value, must be 'markdown' or 'json'` | Change `--view` to `markdown` or `json` |
+| `invalid --api value, must be 'free' or 'paid'` | Change `--api` to `free` or `paid` |
+| `failed to open or read --list file` | Fix `--list` file path |
+| `no input files specified` | Add file argument or `--list` |
+| `flag value is not a file` | Use `--include-char-details` without a value (it's a bool flag) |
+| `file not found` | Fix file path |
+| `--list requires --output` | Add `-o <directory>` |
+| `multiple inputs require --output` | Add `-o <directory>` |
+| `paid API requires credentials` | Run `xparse-cli auth` or set `XPARSE_APP_ID` + `XPARSE_SECRET_CODE` |
 
-## Exit codes
+## Exit 3 — API errors (stderr = `api_code：message`)
 
-| Code | Meaning | Recovery |
-|------|---------|----------|
-| 0 | Success | — |
-| 1 | General API or unknown error | Check network connectivity; retry; use `--verbose` for details |
-| 2 | Invalid parameters / usage error | Check command syntax and flag values |
-| 3 | API returned error (structured JSON on stderr) | Parse stderr JSON for error_type, suggestion, retryable |
+Agent parses stderr as `api_code：message`, then matches `api_code` to decide action.
 
-### Structured error output (exit code 3)
+### Retryable — Agent retries automatically (max 2 times, 2s backoff)
 
-When exit code is 3, stderr contains a JSON object:
+| api_code | stderr message | action |
+|----------|----------------|--------|
+| 500 | `500：服务器内部错误` | Retry |
+| 30203 | `30203：基础服务故障，请稍后重试` | Retry |
+| 40306 | `40306：qps超过限制` | Wait 3s, then retry |
+| 40428 | `40428：word和ppt转pdf失败或者超时` | Retry; or convert to PDF first, then parse PDF |
+| 50207 | `50207：部分页面解析失败` | Use partial results if available; retry for full |
 
-```json
-{
-  "error_type": "password_error",
-  "code": 40423,
-  "message": "Password required or incorrect password",
-  "suggestion": "Use --password to provide the correct document password",
-  "retryable": false
-}
-```
+### Auth — escalate to human
 
-Fields:
-- `error_type`: category — `auth_error`, `quota_error`, `rate_limit_error`, `param_error`, `format_error`, `file_error`, `password_error`, `page_range_error`, `parse_error`, `server_error`, `partial_error`, `unknown_error`
-- `code`: API error code
-- `message`: human-readable description
-- `suggestion`: recommended fix action
-- `retryable`: whether Agent should retry
+| api_code | stderr message | action |
+|----------|----------------|--------|
+| 40101 | `40101：x-ti-app-id 或 x-ti-secret-code 为空` | Ask human: `xparse-cli auth` |
+| 40102 | `40102：x-ti-app-id 或 x-ti-secret-code 无效，验证失败` | Ask human: check credentials |
+| 40103 | `40103：客户端IP不在白名单` | Ask human: check IP whitelist |
 
-### API error code reference
+### Quota / limit — escalate to human
 
-| API code | error_type | Description |
-|----------|-----------|-------------|
-| 500 | server_error | Server internal error |
-| 30203 | server_error | Base service failure |
-| 40003 | quota_error | Insufficient balance |
-| 40004 | param_error | Invalid parameter |
-| 40007 | param_error | Service not found or not published |
-| 40008 | param_error | Service not activated |
-| 40101 | auth_error | Credentials empty |
-| 40102 | auth_error | Authentication failed |
-| 40103 | auth_error | IP not whitelisted |
-| 40301 | format_error | Image type not supported |
-| 40302 | file_error | File size exceeds limit (500MB) |
-| 40303 | format_error | File type not supported |
-| 40304 | file_error | Image dimensions out of range |
-| 40305 | file_error | No file uploaded |
-| 40306 | rate_limit_error | QPS limit exceeded |
-| 40307 | quota_error | Daily free quota exhausted |
-| 40400 | param_error | Invalid request URL |
-| 40422 | file_error | The file is corrupted |
-| 40423 | password_error | Password required or incorrect password |
-| 40424 | page_range_error | Page number out of range |
-| 40425 | format_error | The input file format is not supported |
-| 40427 | param_error | DPI value is not in the allowed list |
-| 40428 | parse_error | Office file conversion failed or timed out |
-| 40429 | parse_error | Unsupported engine |
-| 50207 | partial_error | Some pages failed to parse |
+| api_code | stderr message | action |
+|----------|----------------|--------|
+| 40003 | `40003：余额不足，请充值后再使用` | Ask human to top up, or switch `--api free` |
+| 40302 | `40302：上传文件大小不符，文件大小不超过 500M` | Split or compress file |
+| 40304 | `40304：图片尺寸不符` | Resize image (20–20000px) |
+| 40307 | `40307：今日免费额度已用完` | Ask human: try tomorrow or `--api paid` |
 
-## General rules
+### Parameter — Agent fixes command and re-runs
 
-When using this skill on behalf of the user:
+| api_code | stderr message | fix |
+|----------|----------------|-----|
+| 400 | `400：上传的文件不能为空` | File is empty (0 bytes) — use a different file |
+| 40004 | `40004：参数错误，请查看技术文档，检查传参` | Check flags and values |
+| 40007 | `40007：机器人不存在或未发布` | Check configuration |
+| 40008 | `40008：机器人未开通，请至市场开通后重试` | Activate service at textin.com |
+| 40301 | `40301：图片类型不支持` | Use supported format: JPG/PNG/BMP/TIFF/WebP |
+| 40303 | `40303：文件类型不支持` | Use supported format (see list above) |
+| 40305 | `40305：识别文件未上传` | Check file argument |
+| 40400 | `40400：无效的请求链接，请检查链接是否正确` | Fix URL |
+| 40422 | `40422：文件损坏` | Re-download or use different copy |
+| 40423 | `40423：PDF密码错误` | Add `--password <correct_password>` |
+| 40424 | `40424：页数设置超出文件范围` | Adjust `--page-range` to valid range |
+| 40425 | `40425：文件格式不支持` | Use supported format |
+| 40427 | `40427：DPI参数不在支持列表中` | Use DPI: 72, 144, or 216 |
+| 40429 | `40429：不支持的引擎` | Contact support |
 
+### Unknown api_code
+
+If `api_code` is not in the tables above, retry once. If still fails, escalate to human with the full stderr output.
+
+---
+
+## Agent rules
+
+- **stdout is sacred** — never mix errors into stdout; always capture stderr separately
 - **Quote file paths** with spaces: `xparse-cli parse "report 01.pdf"`
-- **Don't run commands blindly on errors** — parse the structured error JSON and suggest a fix
-- On exit code 3, read the `retryable` field to decide whether to retry or ask the user
-- On exit code 1, add `--verbose` flag to diagnose network issues
-- When the user asks to **upgrade**, run the install command first
+- On exit 1 with `network or request failed`, add `--verbose` on retry to capture HTTP details
+- Never retry exit 2 with the same command — always fix first
+- On exit 3 retryable errors, max 2 retries with 2s backoff
+- When user asks to **upgrade**: `curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh`
 
 ### Default output directory
 
-When saving output on behalf of the user and no `--output` is specified, generate:
+When Agent saves output and user didn't specify `--output`:
 
 ```
 ~/xparse-cli/<name>_<hash>/
 ```
 
-**Naming rules:**
+- `<name>`: filename without extension, sanitized (`_` for spaces/special chars)
+- `<hash>`: `echo -n "<full_path>" | md5sum | cut -c1-6`
 
-- `<name>`: filename without extension, sanitized (replace spaces and shell-unsafe characters with `_`)
-- `<hash>`: first 6 characters of MD5 of the full source path
-
-```bash
-echo -n "<full_source_path>" | md5sum | cut -c1-6
-```
-
-| Source | Output directory |
-|--------|-----------------|
-| `report.pdf` | `~/xparse-cli/report_f1a2b3/` |
-
-When the user specifies `--output`, use their path as-is.
-
-### Post-parse hints
-
-After a successful parse, the agent MAY append ONE brief hint (don't repeat in the same session):
-
-- If `--view json` not used: "Use `--view json` for full structured data."
-- If parsing a large PDF: "Use `--page-range` to parse specific pages."
-- If error 40423: "This PDF is encrypted. Use `--password` to provide the password."
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| No output, exit 1 | Check network; retry; add `--verbose` |
-| Exit 2 | Check flag names and values |
-| Exit 3 with quota_error (40003) | Balance depleted — top up or use `--api free` |
-| Exit 3 with quota_error (40307) | Daily free quota used up — try tomorrow or `--api paid` |
-| Exit 3 with rate_limit_error (40306) | Too many requests — wait and retry |
-| Exit 3 with file_error (40302) | File exceeds 500MB — split or compress |
-| Exit 3 with file_error (40422) | File is corrupted — re-download or use a different copy |
-| Exit 3 with password_error (40423) | Add `--password` with the correct password |
-| Exit 3 with page_range_error (40424) | Adjust `--page-range` to valid range |
-| Exit 3 with format_error (40303/40425) | Check file format (see supported list) |
-| Exit 3 with parse_error (40428) | Retry; or convert Office file to PDF first |
-| Want paid API but no credentials | `xparse-cli auth` or set env vars |
-| Batch partially failed | Check stderr for per-file errors |
+When user specifies `--output`, use their path as-is.
 
 ## Notes
 
-- All status/progress messages go to stderr; only document content goes to stdout
-- Free API works with zero configuration — no registration needed
-- Paid API requires `XPARSE_APP_ID` + `XPARSE_SECRET_CODE`
-- Credentials stored in `~/.xparse-cli/config.yaml` after `xparse-cli auth`
-- Token resolution: `--app-id`/`--secret-code` flags > env vars > config file
+- stdout = document content only; stderr = errors only
+- Free API: zero config, no registration
+- Paid API: `XPARSE_APP_ID` + `XPARSE_SECRET_CODE`
+- Credential priority: flags > env vars > `~/.xparse-cli/config.yaml`

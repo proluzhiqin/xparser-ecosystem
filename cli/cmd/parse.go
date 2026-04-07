@@ -7,13 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/textin/xparser-ecosystem/cli/internal/config"
 	"github.com/textin/xparser-ecosystem/cli/internal/exitcode"
-	"github.com/textin/xparser-ecosystem/cli/internal/output"
 )
 
 // ── V1 parse flags ──
@@ -77,7 +75,7 @@ func init() {
 func runParse(cmd *cobra.Command, args []string) error {
 	// Validate --view
 	if parseView != "markdown" && parseView != "json" {
-		return &exitError{code: exitcode.UsageError, msg: fmt.Sprintf("invalid --view %q: must be 'markdown' or 'json'", parseView)}
+		return usageErr(exitcode.ErrInvalidView)
 	}
 
 	// Validate --api
@@ -86,49 +84,45 @@ func runParse(cmd *cobra.Command, args []string) error {
 	case "", "free", "paid":
 		apiMode = APIMode(parseAPI)
 	default:
-		return &exitError{code: exitcode.UsageError, msg: fmt.Sprintf("invalid --api %q: must be 'free' or 'paid'", parseAPI)}
+		return usageErr(exitcode.ErrInvalidAPI)
 	}
 
 	// Collect input sources
 	sources, err := collectSources(args, parseListFile)
 	if err != nil {
-		return &exitError{code: exitcode.UsageError, msg: err.Error()}
+		return usageErr(exitcode.ErrOpenListFile)
 	}
 
 	if len(sources) == 0 {
-		return &exitError{code: exitcode.UsageError, msg: "no input files specified. Provide files as arguments or use --list <file>"}
+		return usageErr(exitcode.ErrNoInput)
 	}
 
 	// Validate file existence early
 	for _, src := range sources {
 		if !isURL(src) {
 			if _, err := os.Stat(src); os.IsNotExist(err) {
-				// Detect likely misuse of bool flags (e.g. --include-char-details 1)
 				if looksLikeBoolValue(src) {
-					return &exitError{
-						code: exitcode.UsageError,
-						msg:  fmt.Sprintf("file not found: %q — this looks like a flag value, not a file. Bool flags don't take separate values; use --include-char-details (no value) or --include-char-details=true", src),
-					}
+					return usageErr(exitcode.ErrFlagValueNotFile)
 				}
-				return &exitError{code: exitcode.UsageError, msg: fmt.Sprintf("file not found: %s", src)}
+				return usageErr(exitcode.ErrFileNotFound)
 			}
 		}
 	}
 
 	// --list requires --output
 	if parseListFile != "" && parseOutput == "" {
-		return &exitError{code: exitcode.UsageError, msg: "--list requires --output to specify output directory"}
+		return usageErr(exitcode.ErrListRequiresOut)
 	}
 
 	// Batch mode requires --output to be a directory
 	if len(sources) > 1 && parseOutput == "" {
-		return &exitError{code: exitcode.UsageError, msg: "multiple inputs require --output to specify output directory"}
+		return usageErr(exitcode.ErrMultiRequiresOut)
 	}
 
 	// Resolve credentials
 	credSrc, err := config.ResolveCredentials(cmd)
 	if err != nil {
-		return &exitError{code: exitcode.GeneralError, msg: err.Error()}
+		return generalErr(exitcode.ErrCredentialsConfig)
 	}
 
 	// Determine API mode
@@ -136,10 +130,7 @@ func runParse(cmd *cobra.Command, args []string) error {
 
 	// --api paid requires credentials
 	if !isFree && (credSrc.AppID == "" || credSrc.SecretCode == "") {
-		return &exitError{
-			code: exitcode.UsageError,
-			msg:  "paid API requires credentials. Set XPARSE_APP_ID and XPARSE_SECRET_CODE, or run 'xparse-cli auth'",
-		}
+		return usageErr(exitcode.ErrPaidNoCreds)
 	}
 
 	client := newXParserClient(cmd, credSrc, isFree)
@@ -148,12 +139,6 @@ func runParse(cmd *cobra.Command, args []string) error {
 		PageRange:          parsePageRangeFlag,
 		Password:           parsePassword,
 		IncludeCharDetails: parseIncludeCharDetail,
-	}
-
-	if isFree {
-		output.Status("Using free API")
-	} else {
-		output.Status("Using paid API (credentials: %s)", credSrc.Source)
 	}
 
 	if len(sources) == 1 {
@@ -165,9 +150,6 @@ func runParse(cmd *cobra.Command, args []string) error {
 // ── single file/url ──
 
 func runSingleParse(client *XParserClient, source string, opts *ParseOptions) error {
-	output.Status("Parsing... %s", filepath.Base(source))
-	start := time.Now()
-
 	var resp *ParseResponse
 	var err error
 
@@ -177,20 +159,16 @@ func runSingleParse(client *XParserClient, source string, opts *ParseOptions) er
 		resp, err = client.ParseFile(source, opts)
 	}
 	if err != nil {
-		return &exitError{code: exitcode.GeneralError, msg: err.Error()}
+		return generalErr(exitcode.ErrNetworkRequest)
 	}
 
 	if resp.Code != 200 {
-		return handleAPICodeError(resp.Code, resp.Message)
+		return apiErr(resp.Code)
 	}
 
 	if !resp.HasResult() {
-		return &exitError{code: exitcode.GeneralError, msg: "API returned success but no result data"}
+		return generalErr(exitcode.ErrNoResultData)
 	}
-
-	elapsed := time.Since(start).Seconds()
-	output.Status("Done in %.1fs (engine: %.0fms, pages: %d/%d)",
-		elapsed, resp.GetDurationMs(), resp.GetSuccessCount(), resp.GetPageCount())
 
 	return outputResult(resp, source)
 }
@@ -199,20 +177,12 @@ func runSingleParse(client *XParserClient, source string, opts *ParseOptions) er
 
 func runBatchParse(client *XParserClient, sources []string, opts *ParseOptions) error {
 	if err := os.MkdirAll(parseOutput, 0o755); err != nil {
-		return &exitError{code: exitcode.GeneralError, msg: fmt.Sprintf("failed to create output directory: %v", err)}
+		return generalErr(exitcode.ErrCreateOutputDir)
 	}
 
-	total := len(sources)
-	output.Status("Batch: %d files", total)
-
-	succeeded := 0
 	failed := 0
-	start := time.Now()
 
-	for i, source := range sources {
-		output.Status("[%d/%d] Parsing... %s", i+1, total, filepath.Base(source))
-		itemStart := time.Now()
-
+	for _, source := range sources {
 		var resp *ParseResponse
 		var err error
 
@@ -223,45 +193,29 @@ func runBatchParse(client *XParserClient, sources []string, opts *ParseOptions) 
 		}
 
 		if err != nil {
-			output.Errorf("[%d/%d] %s - %v", i+1, total, filepath.Base(source), err)
 			failed++
 			continue
 		}
 
 		if resp.Code != 200 {
-			info := exitcode.FromAPICode(resp.Code, resp.Message)
-			output.Errorf("[%d/%d] %s - %s", i+1, total, filepath.Base(source), info.Message)
-			if info.Suggestion != "" {
-				output.Status("  Hint: %s", info.Suggestion)
-			}
 			failed++
 			continue
 		}
 
 		if !resp.HasResult() {
-			output.Errorf("[%d/%d] %s - API returned success but no result data", i+1, total, filepath.Base(source))
 			failed++
 			continue
 		}
 
-		saved, err := saveResult(resp, source, parseOutput)
-		if err != nil {
-			output.Errorf("[%d/%d] %s - save failed: %v", i+1, total, filepath.Base(source), err)
+		if _, err := saveResult(resp, source, parseOutput); err != nil {
 			failed++
 			continue
 		}
-
-		output.Status("[%d/%d] Done: %s -> %s (%.1fs)",
-			i+1, total, filepath.Base(source), saved, time.Since(itemStart).Seconds())
-		succeeded++
 	}
 
-	elapsed := time.Since(start).Seconds()
 	if failed > 0 {
-		output.Status("Result: %d/%d succeeded, %d failed (%.1fs)", succeeded, total, failed, elapsed)
-		return &exitError{code: exitcode.GeneralError, msg: fmt.Sprintf("batch completed with errors: %d/%d failed", failed, total)}
+		return generalErr(exitcode.ErrBatchPartial)
 	}
-	output.Status("Result: %d/%d succeeded (%.1fs)", succeeded, total, elapsed)
 	return nil
 }
 
@@ -281,11 +235,9 @@ func outputResult(resp *ParseResponse, source string) error {
 	}
 
 	// file mode
-	saved, err := saveResult(resp, source, parseOutput)
-	if err != nil {
-		return &exitError{code: exitcode.GeneralError, msg: err.Error()}
+	if _, err := saveResult(resp, source, parseOutput); err != nil {
+		return generalErr(exitcode.ErrSaveResult)
 	}
-	output.Status("Saved: %s", saved)
 	return nil
 }
 
@@ -321,16 +273,28 @@ func saveResult(resp *ParseResponse, source string, outputPath string) (string, 
 	return outPath, nil
 }
 
-// ── error handling ──
+// ── error helpers ──
 
-func handleAPICodeError(code int, message string) error {
-	info := exitcode.FromAPICode(code, message)
+// apiErr outputs "api_code：message" to stderr and returns exit code 3.
+func apiErr(apiCode int) *exitError {
+	info := exitcode.FromAPICode(apiCode)
 	if info == nil {
 		return nil
 	}
-	// Write structured error JSON to stderr
-	output.Errorf("%s", info.JSON())
+	fmt.Fprintf(os.Stderr, "%d：%s\n", info.APICode, info.Message)
 	return &exitError{code: exitcode.APIError, msg: info.Message}
+}
+
+// usageErr outputs plain text to stderr and returns exit code 2.
+func usageErr(message string) *exitError {
+	fmt.Fprintln(os.Stderr, message)
+	return &exitError{code: exitcode.UsageError, msg: message}
+}
+
+// generalErr outputs plain text to stderr and returns exit code 1.
+func generalErr(message string) *exitError {
+	fmt.Fprintln(os.Stderr, message)
+	return &exitError{code: exitcode.GeneralError, msg: message}
 }
 
 // exitError carries a process exit code alongside the error message.

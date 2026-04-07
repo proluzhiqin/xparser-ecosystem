@@ -1,6 +1,6 @@
 ---
-name: xparser
-description: Textin xParser document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParser API. Supports OCR, table extraction, formula recognition, and image extraction. Zero config, free API default, structured errors, stdout-friendly.
+name: xparse-cli
+description: Textin xparse document parsing CLI that converts PDFs, images, Office documents and 20+ file formats into Markdown and structured JSON via the Textin xParse API. Supports OCR, table extraction, formula recognition, and image extraction. Zero config, free API default, structured errors, stdout-friendly.
 read_when:
   - Extracting text from PDF documents
   - Converting documents to Markdown

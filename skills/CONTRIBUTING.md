@@ -1,4 +1,4 @@
-# Contributing to xParser Skill
+# Contributing to xparse-cli Skill
 
 This skill wraps the `xparse-cli` CLI binary. Before reporting an issue, figure out whether the problem is in the **skill documentation** or the **CLI itself**.
 

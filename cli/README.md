@@ -11,7 +11,7 @@ Textin xParser 文档解析命令行工具，基于 [Textin xParser API](https:/
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
+source <(curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh)
 ```
 
 **Windows (PowerShell)**
@@ -86,7 +86,7 @@ xparse-cli parse report.pdf
 xparse-cli parse report.pdf --view json
 
 # 保存到目录
-xparse-cli parse report.pdf -o ./output/
+xparse-cli parse report.pdf --output ./output/
 
 # 指定页码范围
 xparse-cli parse report.pdf --page-range "1-5"
@@ -131,8 +131,8 @@ xparse-cli parse report.pdf --api paid
 | `--password` | | 加密文档密码 |
 | `--include-char-details` | `false` | 返回字符级坐标和置信度 |
 | `--list` | | 从文件读取输入列表（需配合 `--output`） |
-| `-o, --output` | _(stdout)_ | 输出文件路径或目录 |
-| `-v, --verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
+| `--output` | _(stdout)_ | 输出文件路径或目录 |
+| `--verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
 
 ### API capabilities 默认值
 
@@ -171,10 +171,10 @@ xparse-cli parse --list files.txt --output ./results/
 
 ```bash
 # 从解析结果 JSON 中提取 elements 图片并下载
-xparse-cli download --from result.json -o ./images/
+xparse-cli download --from result.json --output ./images/
 
 # 直接下载图片 URL
-xparse-cli download https://web-api.textin.com/ocr_image/external/abc123.jpg -o ./images/
+xparse-cli download https://web-api.textin.com/ocr_image/external/abc123.jpg --output ./images/
 ```
 
 ### 配置管理
@@ -195,7 +195,7 @@ xparse-cli update
 ### 调试模式
 
 ```bash
-xparse-cli parse report.pdf -v
+xparse-cli parse report.pdf --verbose
 ```
 
 ## 凭证管理
@@ -206,16 +206,33 @@ xparse-cli parse report.pdf -v
 | 2 | 环境变量 | `XPARSE_APP_ID` 和 `XPARSE_SECRET_CODE` |
 | 3 | 配置文件 | `~/.xparse-cli/config.yaml` |
 
-## 退出码
+## 退出码与错误处理
 
-| 码 | 含义 | stderr 格式 | 建议 |
-|----|------|-------------|------|
-| 0 | 成功 | — | — |
-| 1 | 一般错误 / 网络异常 | 纯文本 | 使用 `-v` 查看详情；重试 |
-| 2 | 参数错误 | 纯文本 | 检查参数名称和值 |
-| 3 | API 返回错误 | `api_code：message` | 根据 api_code 查表处理 |
+| 码 | 含义 | stderr 格式 |
+|----|------|-------------|
+| 0 | 成功 | — |
+| 1 | 一般错误 / 网络异常 | 纯文本 + `> [tag] suggestion` |
+| 2 | 参数错误 | 纯文本 + `> [tag] suggestion` |
+| 3 | API 返回错误 | `api_code：message` + `> [tag] suggestion` |
+
+每条错误输出两行到 stderr，第二行以 `>` 开头，包含 `[tag]` 标签指示处理方式：
+
+| 标签 | 含义 |
+|------|------|
+| `[fix]` | 修正参数后重新执行 |
+| `[retry]` | 自动重试（带退避） |
+| `[fallback]` | 尝试替代方案 |
+| `[ask human]` | 需要人工介入 |
+
+示例：
+
+```
+invalid --view value, must be 'markdown' or 'json'
+> [fix] use --view markdown or --view json
+```
 
 > stdout 仅输出文档内容，stderr 仅输出错误信息，exit code 严格为 0/1/2/3。
+> 完整的错误和建议枚举见 [suggestion.txt](suggestion.txt)。
 
 ## 支持的文件格式
 

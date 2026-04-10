@@ -2,7 +2,13 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/spf13/cobra"
+
+	"github.com/textin/xparser-ecosystem/cli/internal/exitcode"
 )
 
 var (
@@ -44,13 +50,131 @@ For more information, visit https://www.textin.com`,
 	SilenceErrors: true,
 }
 
+// boolStringFlags lists flags registered as StringVar with NoOptDefVal.
+// For these flags, "--flag true/false" (space-separated) must be normalized
+// to "--flag=true/false" before cobra parses args, because pflag's NoOptDefVal
+// prevents consuming the next token as the flag value.
+var boolStringFlags = map[string]bool{
+	"--include-char-details": true,
+}
+
+func normalizeArgs() {
+	args := os.Args[1:]
+	normalized := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if boolStringFlags[arg] && i+1 < len(args) {
+			next := strings.ToLower(args[i+1])
+			if next == "true" || next == "false" {
+				normalized = append(normalized, arg+"="+next)
+				i++ // skip next
+				continue
+			}
+		}
+		normalized = append(normalized, arg)
+	}
+	os.Args = append(os.Args[:1], normalized...)
+}
+
 func Execute() error {
-	return rootCmd.Execute()
+	normalizeArgs()
+	err := rootCmd.Execute()
+	if err == nil {
+		return nil
+	}
+
+	// Already a custom exitError — pass through as-is
+	if _, ok := err.(*exitError); ok {
+		return err
+	}
+
+	// Cobra errors (unknown flag, unknown command, wrong args, etc.) → exit code 2
+	msg := formatCobraError(err)
+	token := extractInvalidToken(err)
+	fmt.Fprintln(os.Stderr, msg)
+	fmt.Fprintf(os.Stderr, "> [fix] remove or fix %s; run xparse-cli help for available commands and flags\n", token)
+	return &exitError{code: exitcode.UsageError, msg: msg}
+}
+
+// cobraErrorPatterns maps Cobra error prefixes to extraction functions.
+// Each function extracts the invalid token from the error message.
+var cobraErrorPatterns = []struct {
+	prefix  string
+	extract func(msg string) string
+}{
+	{"unknown flag: ", func(msg string) string {
+		return strings.TrimPrefix(msg, "unknown flag: ")
+	}},
+	{"unknown shorthand flag: ", func(msg string) string {
+		if idx := strings.LastIndex(msg, " in "); idx != -1 {
+			return msg[idx+4:]
+		}
+		return ""
+	}},
+	{"unknown command ", func(msg string) string {
+		if start := strings.IndexByte(msg, '"'); start != -1 {
+			if end := strings.IndexByte(msg[start+1:], '"'); end != -1 {
+				return msg[start+1 : start+1+end]
+			}
+		}
+		return ""
+	}},
+}
+
+// extractInvalidToken extracts the invalid token from a Cobra error for use in suggestions.
+func extractInvalidToken(err error) string {
+	msg := err.Error()
+	for _, p := range cobraErrorPatterns {
+		if strings.HasPrefix(msg, p.prefix) {
+			if token := p.extract(msg); token != "" {
+				return token
+			}
+		}
+	}
+	return "the invalid parameter"
+}
+
+// formatCobraError normalizes Cobra errors into "invalid parameter: <token>".
+func formatCobraError(err error) string {
+	msg := err.Error()
+	for _, p := range cobraErrorPatterns {
+		if strings.HasPrefix(msg, p.prefix) {
+			if token := p.extract(msg); token != "" {
+				return exitcode.ErrInvalidFlag + ": " + token
+			}
+		}
+	}
+	return msg
 }
 
 func init() {
+	// Save default help output function, then block --help / -h flags.
+	// Only "xparse-cli help [command]" is allowed.
+	defaultHelp := rootCmd.HelpFunc()
+
+	// Override HelpFunc so --help / -h triggers an error instead of showing help
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		fmt.Fprintln(os.Stderr, exitcode.ErrInvalidFlag+": --help")
+		fmt.Fprintf(os.Stderr, "> [fix] remove --help; use 'xparse-cli help' instead\n")
+		os.Exit(exitcode.UsageError)
+	})
+
+	// Custom help subcommand that bypasses the overridden HelpFunc
+	rootCmd.SetHelpCommand(&cobra.Command{
+		Use:   "help [command]",
+		Short: "Help about any command",
+		Run: func(c *cobra.Command, args []string) {
+			target, _, e := c.Root().Find(args)
+			if target == nil || e != nil {
+				defaultHelp(c.Root(), args)
+				return
+			}
+			defaultHelp(target, []string{})
+		},
+	})
+
 	rootCmd.PersistentFlags().StringVar(&appIDFlag, "app-id", "", "Textin App ID (overrides env and config)")
 	rootCmd.PersistentFlags().StringVar(&secretCodeFlag, "secret-code", "", "Textin Secret Code (overrides env and config)")
 	rootCmd.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "API base URL (for private deployments)")
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Verbose mode, print HTTP details")
+	rootCmd.PersistentFlags().BoolVar(&verboseFlag, "verbose", false, "Verbose mode, print HTTP details")
 }

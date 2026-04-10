@@ -2,7 +2,7 @@
 set -e
 
 # xParser CLI installer
-# Usage: curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
+# Usage: source <(curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh)
 #
 # Environment variables:
 #   XPARSER_VERSION   - version to install (default: "latest")
@@ -13,6 +13,12 @@ VERSION="${XPARSER_VERSION:-latest}"
 BASE_URL="${XPARSER_BASE_URL:-https://dllf.intsig.net/download/2026/Solution/xparse-cli}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
+# ── helpers ──
+
+info()  { printf '  %s\n' "$*"; }
+ok()    { printf '  ✓ %s\n' "$*"; }
+err()   { printf '  ✗ %s\n' "$*" >&2; }
+
 detect_platform() {
     OS="$(uname -s)"
     ARCH="$(uname -m)"
@@ -20,13 +26,13 @@ detect_platform() {
     case "$OS" in
         Linux)  OS="linux" ;;
         Darwin) OS="darwin" ;;
-        *)      echo "Error: unsupported OS: $OS"; exit 1 ;;
+        *)      err "Unsupported OS: $OS"; exit 1 ;;
     esac
 
     case "$ARCH" in
         x86_64|amd64)   ARCH="amd64" ;;
         aarch64|arm64)  ARCH="arm64" ;;
-        *)              echo "Error: unsupported architecture: $ARCH"; exit 1 ;;
+        *)              err "Unsupported architecture: $ARCH"; exit 1 ;;
     esac
 }
 
@@ -35,30 +41,28 @@ ensure_dir() {
         return
     fi
 
-    # Try creating as current user first
     if mkdir -p "$INSTALL_DIR" 2>/dev/null; then
         return
     fi
 
-    # Fallback to sudo
     if command -v sudo >/dev/null 2>&1; then
-        echo "Elevated permissions required for ${INSTALL_DIR}"
+        info "Elevated permissions required for ${INSTALL_DIR}"
         sudo mkdir -p "$INSTALL_DIR"
         sudo chown "$(id -u):$(id -g)" "$INSTALL_DIR"
     else
-        echo "Error: cannot create ${INSTALL_DIR} and sudo not available"
-        echo "Try: INSTALL_DIR=~/.local/bin sh install.sh"
+        err "Cannot create ${INSTALL_DIR} and sudo not available"
+        err "Try: INSTALL_DIR=~/.local/bin source <(curl -fsSL ${BASE_URL}/install.sh)"
         exit 1
     fi
 }
 
 ensure_path() {
-    # Already in PATH — nothing to do
+    # Already in PATH
     case ":$PATH:" in
         *":${INSTALL_DIR}:"*) return ;;
     esac
 
-    # Detect login shell (not the shell running this script)
+    # Detect user's login shell
     SHELL_NAME="$(basename "${SHELL:-sh}")"
     case "$SHELL_NAME" in
         zsh)  PROFILE="$HOME/.zshrc" ;;
@@ -69,6 +73,7 @@ ensure_path() {
 
     # Already configured in profile
     if grep -qF "$INSTALL_DIR" "$PROFILE" 2>/dev/null; then
+        export PATH="${INSTALL_DIR}:$PATH"
         return
     fi
 
@@ -79,53 +84,58 @@ ensure_path() {
         EXPORT_LINE="export PATH=\"${INSTALL_DIR}:\$PATH\""
     fi
 
-    # Ensure parent dir exists (for fish config path)
     mkdir -p "$(dirname "$PROFILE")" 2>/dev/null || true
-
     printf '\n# Added by xparse-cli installer\n%s\n' "$EXPORT_LINE" >> "$PROFILE"
-    echo "Added ${INSTALL_DIR} to PATH in ${PROFILE}"
-    echo "Run: source ${PROFILE}  (or restart your terminal)"
+    export PATH="${INSTALL_DIR}:$PATH"
+    ok "Added ${INSTALL_DIR} to PATH in ${PROFILE}"
 }
 
 download_and_install() {
     BINARY="xparse-cli-${OS}-${ARCH}"
     URL="${BASE_URL}/${VERSION}/${BINARY}"
+    DEST="${INSTALL_DIR}/xparse-cli"
     TMP="$(mktemp)"
     trap 'rm -f "$TMP"' EXIT
 
-    echo "Downloading xparse-cli ${VERSION} for ${OS}/${ARCH}..."
-    echo "  ${URL}"
+    # Check if upgrading
+    if [ -x "$DEST" ]; then
+        OLD_VER="$("$DEST" version 2>/dev/null | head -1 || echo "unknown")"
+        info "Upgrading from ${OLD_VER}..."
+    fi
+
+    info "Downloading xparse-cli ${VERSION} for ${OS}/${ARCH}..."
+    info "${URL}"
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL -o "$TMP" "$URL"
     elif command -v wget >/dev/null 2>&1; then
         wget -qO "$TMP" "$URL"
     else
-        echo "Error: curl or wget required"
+        err "curl or wget required"
         exit 1
     fi
 
     if [ ! -s "$TMP" ]; then
-        echo "Error: download failed or file is empty"
-        rm -f "$TMP"
+        err "Download failed or file is empty"
         exit 1
     fi
 
     ensure_dir
 
-    mv "$TMP" "${INSTALL_DIR}/xparse-cli"
-    chmod +x "${INSTALL_DIR}/xparse-cli"
+    mv "$TMP" "$DEST"
+    chmod +x "$DEST"
 
     ensure_path
 
     echo ""
-    echo "Installed successfully!"
-    echo "=========================================================="
-    "${INSTALL_DIR}/xparse-cli" version
-    echo "=========================================================="
+    echo "  =========================================================="
+    printf "  "; "$DEST" version
+    echo "  =========================================================="
     echo ""
-    echo "Executable: ${INSTALL_DIR}/xparse-cli"
+    ok "Installed: ${DEST}"
 }
+
+# ── main ──
 
 detect_platform
 download_and_install

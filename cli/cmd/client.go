@@ -17,18 +17,18 @@ import (
 
 // API endpoints.
 const (
-	paidAPIBaseURL  = "https://api.textin.com"
+	paidAPIBaseURL   = "https://api.textin.com"
 	paidParseAPIPath = "/api/v1/xparse/parse/sync"
 
-	freeAPIBaseURL  = "https://img2word-copy.ai.intsig.net"
-	freeParseAPIPath = "/ai/service/v3/pdf_to_markdown"
+	freeAPIBaseURL   = "https://api.textin.com"
+	freeParseAPIPath = "/api/v1/agent/parse/sync"
 )
 
 // APIMode represents free vs paid API selection.
 type APIMode string
 
 const (
-	APIModeAuto APIMode = ""     // auto: paid if key exists, else free
+	APIModeAuto APIMode = "" // auto: paid if key exists, else free
 	APIModeFree APIMode = "free"
 	APIModePaid APIMode = "paid"
 )
@@ -77,39 +77,30 @@ type Scope struct {
 // ── Response structures ──
 
 // ParseResponse is the top-level JSON response from the xParser API.
-// Supports both paid API ("data" field) and free API ("result" field).
 type ParseResponse struct {
-	Code     int             `json:"code"`
-	Message  string          `json:"message"`
-	Data     *ParseData      `json:"data,omitempty"`
-	Result   *FreeParseResult `json:"result,omitempty"`  // free API uses "result"
-	Duration int             `json:"duration,omitempty"` // free API uses top-level duration
-	Location json.RawMessage `json:"location,omitempty"`
+	Code       int        `json:"code"`
+	Message    string     `json:"message"`
+	XRequestID string     `json:"x_request_id,omitempty"`
+	Data       *ParseData `json:"data,omitempty"`
 }
 
-// GetMarkdown returns markdown from either paid (Data) or free (Result) response.
+// GetMarkdown returns the markdown content from the response.
 func (r *ParseResponse) GetMarkdown() string {
 	if r.Data != nil {
 		return r.Data.Markdown
 	}
-	if r.Result != nil {
-		return r.Result.Markdown
-	}
 	return ""
 }
 
-// HasResult returns true if either Data or Result is present.
+// HasResult returns true if Data is present.
 func (r *ParseResponse) HasResult() bool {
-	return r.Data != nil || r.Result != nil
+	return r.Data != nil
 }
 
 // GetSuccessCount returns the number of successfully parsed pages.
 func (r *ParseResponse) GetSuccessCount() int {
 	if r.Data != nil {
 		return r.Data.SuccessCount
-	}
-	if r.Result != nil {
-		return r.Result.ValidPageNumber
 	}
 	return 0
 }
@@ -119,9 +110,6 @@ func (r *ParseResponse) GetPageCount() int {
 	if r.Data != nil && r.Data.Metadata != nil {
 		return r.Data.Metadata.PageCount
 	}
-	if r.Result != nil {
-		return r.Result.TotalPageNumber
-	}
 	return 0
 }
 
@@ -130,10 +118,10 @@ func (r *ParseResponse) GetDurationMs() float64 {
 	if r.Data != nil && r.Data.Summary != nil {
 		return r.Data.Summary.DurationMs
 	}
-	return float64(r.Duration)
+	return 0
 }
 
-// ParseData holds the parsed output from the paid API (new format).
+// ParseData holds the parsed output from the xParser API.
 type ParseData struct {
 	SchemaVersion string          `json:"schema_version"`
 	FileID        string          `json:"file_id"`
@@ -145,17 +133,6 @@ type ParseData struct {
 	TitleTree     json.RawMessage `json:"title_tree,omitempty"`
 	Pages         json.RawMessage `json:"pages,omitempty"`
 	Summary       *Summary        `json:"summary,omitempty"`
-}
-
-// FreeParseResult holds the parsed output from the free API (old format).
-type FreeParseResult struct {
-	Markdown        string          `json:"markdown"`
-	Detail          json.RawMessage `json:"detail,omitempty"`
-	Pages           json.RawMessage `json:"pages,omitempty"`
-	Catalog         json.RawMessage `json:"catalog,omitempty"`
-	TotalPageNumber int             `json:"total_page_number,omitempty"`
-	ValidPageNumber int             `json:"valid_page_number,omitempty"`
-	Elements        json.RawMessage `json:"elements,omitempty"`
 }
 
 // ParseMetadata holds document metadata from the API.
@@ -182,14 +159,14 @@ type ParseOptions struct {
 func (o *ParseOptions) buildConfig() string {
 	cfg := ParseRequestConfig{
 		Capabilities: &Capabilities{
-			IncludeHierarchy:      true,  // CLI default: true  (API default: true)
-			IncludeInlineObjects:  true,  // CLI default: true  (API default: false)
+			IncludeHierarchy:      true,                 // CLI default: true  (API default: true)
+			IncludeInlineObjects:  true,                 // CLI default: true  (API default: false)
 			IncludeCharDetails:    o.IncludeCharDetails, // CLI default: false (API default: false)
-			IncludeImageData:      true,  // CLI default: true  (API default: false)
-			IncludeTableStructure: true,  // CLI default: true  (API default: false)
-			Pages:                 true,  // CLI default: true  (API default: false)
-			TitleTree:             true,  // CLI default: true  (API default: false)
-			TableView:             "html", // CLI default: html  (API default: html)
+			IncludeImageData:      true,                 // CLI default: true  (API default: false)
+			IncludeTableStructure: true,                 // CLI default: true  (API default: false)
+			Pages:                 true,                 // CLI default: true  (API default: false)
+			TitleTree:             true,                 // CLI default: true  (API default: false)
+			TableView:             "html",               // CLI default: html  (API default: html)
 		},
 	}
 

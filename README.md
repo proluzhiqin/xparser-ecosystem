@@ -9,11 +9,13 @@ xparser-ecosystem/
 ├── cli/                # Go CLI 应用
 │   ├── main.go
 │   ├── cmd/            # 命令实现（parse, auth, download, config, update, version）
-│   └── internal/       # 内部包（config, exitcode, output）
+│   ├── internal/       # 内部包（config, exitcode）
+│   └── suggestion.txt  # 错误与建议完整枚举
 ├── skills/             # Claude AI Skill 集成
 │   ├── SKILL.md
 │   ├── CONTRIBUTING.md
 │   └── _meta.json
+├── build.sh            # 交叉编译脚本
 └── README.md
 ```
 
@@ -22,11 +24,11 @@ xparser-ecosystem/
 - **20+ 格式支持** — PDF、DOC/DOCX、XLS/XLSX、PPT/PPTX、PNG/JPG、HTML、TXT、OFD 等
 - **Agent 友好** — 零配置免费 API、结构化错误输出、stdout/stderr 分离
 - **灵活视图** — Markdown（默认）或 JSON，通过 `--view` 切换
-- **批量处理** — 支持文件列表，带进度报告
+- **批量处理** — 支持文件列表批量解析
 - **图片提取** — 内嵌对象图片提取与批量下载
 - **表格 & 公式** — 表格输出为 HTML，公式输出为 LaTeX
 - **私有部署** — 支持自定义 `base_url`
-- **Unix 友好** — 内容输出到 stdout，状态信息到 stderr，完美支持管道
+- **Unix 友好** — 内容输出到 stdout，错误信息到 stderr，完美支持管道
 
 ## 快速开始
 
@@ -35,7 +37,7 @@ xparser-ecosystem/
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
+source <(curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh)
 ```
 
 **Windows (PowerShell)**
@@ -44,7 +46,11 @@ curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh 
 irm https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.ps1 | iex
 ```
 
-从源码构建请参考 [cli/README.md](cli/README.md#从源码构建)。
+从源码构建请参考 [cli/README.md](cli/README.md#从源码构建)，或使用构建脚本：
+
+```bash
+./build.sh v1.0.1    # 交叉编译 6 平台二进制
+```
 
 ### 零配置解析（免费 API）
 
@@ -101,7 +107,7 @@ xparse-cli parse --list files.txt --output ./results/
 
 ```bash
 # 从解析结果批量下载图片
-xparse-cli download --from result.json -o ./images/
+xparse-cli download --from result.json --output ./images/
 ```
 
 ## 命令一览
@@ -125,17 +131,25 @@ xparse-cli download --from result.json -o ./images/
 | `--password` | | 加密文档密码 |
 | `--include-char-details` | `false` | 返回字符级坐标和置信度 |
 | `--list` | | 从文件读取输入列表（需配合 `--output`） |
-| `-o, --output` | _(stdout)_ | 输出文件路径或目录 |
-| `-v, --verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
+| `--output` | _(stdout)_ | 输出文件路径或目录 |
 
 ## 退出码
 
-| 码 | 含义 | stderr 格式 | 建议 |
-|----|------|-------------|------|
-| 0 | 成功 | — | — |
-| 1 | 一般错误 / 网络异常 | 纯文本 | 使用 `--verbose` 查看详情；重试 |
-| 2 | 参数错误 | 纯文本 | 检查命令语法和参数值 |
-| 3 | API 返回错误 | `api_code：message` | 根据 api_code 查表处理 |
+| 码 | 含义 | stderr 格式 |
+|----|------|-------------|
+| 0 | 成功 | — |
+| 1 | 一般错误 / 网络异常 | 纯文本 + `> [tag] suggestion` |
+| 2 | 参数错误 | 纯文本 + `> [tag] suggestion` |
+| 3 | API 返回错误 | `api_code：message` + `> [tag] suggestion` |
+
+每条错误输出两行到 stderr，第二行以 `>` 开头，包含 `[tag]` 标签指示处理方式：
+
+| 标签 | 含义 |
+|------|------|
+| `[fix]` | 修正参数后重新执行 |
+| `[retry]` | 自动重试（带退避） |
+| `[fallback]` | 尝试替代方案 |
+| `[ask human]` | 需要人工介入 |
 
 > stdout 仅输出文档内容，stderr 仅输出错误信息，exit code 严格为 0/1/2/3。
 

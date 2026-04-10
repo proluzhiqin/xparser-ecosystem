@@ -18,22 +18,21 @@ This skill wraps the `xparse-cli` CLI binary. Before reporting an issue, figure 
    cd cli && go build -o xparse-cli .
 
    # Or install via script
-   curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh | sh
+   source <(curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh)
    ```
 
 2. Reproduce in your terminal — this isolates skill vs. CLI:
 
    ```bash
    xparse-cli auth --show          # credentials OK?
-   xparse-cli parse test.pdf -v    # verbose HTTP for debugging
    ```
 
-3. Note the **exit code** (`echo $?`) and any stderr output.
+3. Note the **exit code** (`echo $?`) and the two-line stderr output (error + `> [tag] suggestion`).
 
 ## Issue template
 
 ```
-**Command:** xparse-cli parse report.pdf -o ./out/
+**Command:** xparse-cli parse report.pdf --output ./out/
 **Exit code:** 3
 **Expected:** Markdown output in ./out/report.md
 **Actual:** [what happened]

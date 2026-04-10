@@ -24,6 +24,7 @@ Get your credentials at https://www.textin.com/console/dashboard/setting`,
   # For automation, set environment variables:
   export XPARSE_APP_ID=your_app_id
   export XPARSE_SECRET_CODE=your_secret_code`,
+	Args: cobra.NoArgs,
 	RunE: runAuth,
 }
 

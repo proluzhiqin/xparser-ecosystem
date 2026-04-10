@@ -1,0 +1,263 @@
+xparse-cli Error & Suggestion Reference
+========================================
+
+Format: every error outputs two lines to stderr:
+  Line 1: <error message>
+  Line 2: > <suggestion with [tag]>
+
+Tags: [fix] [retry] [fallback] [ask human]
+
+================================================================================
+
+| `[fix]` | 修正参数后重新执行 |
+| `[retry]` | 自动重试（带退避） |
+| `[fallback]` | 尝试替代方案 |
+| `[ask human]` | 需要人工介入 |
+
+================================================================================
+Exit 1 — General Errors
+================================================================================
+
+场景：凭证配置异常（环境变量或配置文件读取失败）
+Error:    credentials configuration error
+Suggest:  > [ask human] run xparse-cli auth or set XPARSE_APP_ID and XPARSE_SECRET_CODE env vars
+
+场景：网络请求失败（超时、DNS解析失败、连接被拒绝等）
+Error:    network or request failed
+Suggest:  > [retry] with --verbose for <source>; max 2 retries, 2s backoff
+
+场景：API返回200但响应体中无解析结果数据
+Error:    API returned success but no result data
+Suggest:  > [retry] once for <source>; if persists, try a different file or format
+
+场景：解析结果写入文件失败（磁盘满、权限不足等）
+Error:    failed to save result
+Suggest:  > [ask human] check disk space and write permissions for <output>
+
+场景：用户指定的输入文件不存在
+Error:    file not found: <src>
+Suggest:  > [ask human] verify <src> exists and is accessible
+
+场景：--output 指定的目录不存在
+Error:    output directory does not exist: <path>
+Suggest:  > [ask human] create the directory with mkdir -p <path>
+
+场景：批量解析中部分文件失败
+Error:    batch completed with errors (N/M failed)
+输出格式：
+  > [1] <source>: <error>
+  >     <suggestion>
+Per-file error → suggestion（<retryCmd> = xparse-cli parse "<source>" --output <dir> ...）：
+  网络失败        → [retry] <retryCmd> --verbose; max 2 retries, 2s backoff
+  未知API码       → [retry] <retryCmd>
+  无结果数据      → [retry] <retryCmd>
+  保存失败        → [ask human] check disk space and write permissions for <output>
+  可重试API错误   → [retry] <retryCmd>
+  40423 密码错误  → [ask human] provide the correct password for <file>; [retry] <retryCmd> --password <password>
+  40424 页码超出  → [fix] adjust --page-range for <file>; [retry] <retryCmd>
+  40003/40101/02  → [fallback] <retryCmd> --api free
+  40307 免费额度  → [fallback] <retryCmd> --api paid
+  其他API错误     → 使用 Exit 3 中对应 API code 的默认 suggestion
+示例：
+  batch completed with errors (3/3 failed)
+  > [1] ./test/有密码.pdf: 40423：PDF密码错误
+  >     [ask human] provide the correct password for 有密码.pdf; [retry] xparse-cli parse "./test/有密码.pdf" --output ./result --password <password>
+  > [2] ./test/增票.pdf: 40306：qps超过限制
+  >     [retry] xparse-cli parse "./test/增票.pdf" --output ./result
+  > [3] ./test/1.txt: 40303：文件类型不支持
+  >     [fix] use a supported file format; if using free API, only PDF and images are supported — [ask human] run xparse-cli auth
+
+
+================================================================================
+Exit 2 — Usage Errors
+================================================================================
+
+场景：--view 参数值不是 markdown 或 json
+Error:    invalid --view value, must be 'markdown' or 'json'
+Suggest:  > [fix] use --view markdown or --view json
+
+场景：--api 参数值不是 free 或 paid
+Error:    invalid --api value, must be 'free' or 'paid'
+Suggest:  > [fix] use --api free or --api paid
+
+场景：--include-char-details 参数值不是 true 或 false
+Error:    invalid --include-char-details value, must be 'true' or 'false'
+Suggest:  > [fix] use --include-char-details, --include-char-details=true, or --include-char-details=false
+
+场景：--list 指定的文件列表无法打开或读取
+Error:    failed to open or read --list file
+Suggest:  > [ask human] check that the --list file <listFile> exists and is readable
+
+场景：未提供任何输入文件（无参数且无 --list）
+Error:    no input files specified
+Suggest:  > [fix] provide a file path, URL, or use --list <file>
+
+场景：使用 --list 但未指定 --output
+Error:    --list requires --output
+Suggest:  > [fix] add --output <directory> when using --list
+
+场景：多文件输入但未指定 --output
+Error:    multiple inputs require --output
+Suggest:  > [fix] add --output <directory> for batch processing
+
+场景：指定 --api paid 但无凭证
+Error:    paid API requires credentials
+Suggest:  > [ask human] run xparse-cli auth; or [fix] re-run with --api free
+
+场景：使用了未知的命令行参数或命令
+Error:    invalid parameter: <token>
+Suggest:  > [fix] remove or fix <token>; run xparse-cli help for available commands and flags
+
+
+================================================================================
+Exit 3 — API Errors
+================================================================================
+
+场景：上传了空文件（0字节）
+API 400:   上传的文件不能为空
+Suggest:   > [ask human] provide a valid file — current file is empty (0 bytes)
+
+场景：服务端内部错误
+API 500:   服务器内部错误
+Suggest:   > [retry] max 2 retries, 2s backoff
+
+场景：后端基础服务暂时不可用
+API 30203: 基础服务故障，请稍后重试
+Suggest:   > [retry] max 2 retries, 2s backoff
+
+场景：付费账户余额不足
+API 40003: 余额不足，请充值后再使用
+Suggest:   > [fallback] re-run with --api free; or [ask human] top up at textin.com
+
+场景：请求参数格式或值错误
+API 40004: 参数错误，请查看技术文档，检查传参
+Suggest:   > [fix] check all flags and values; run xparse-cli help parse
+
+场景：API服务（机器人）不存在或未发布
+API 40007: 机器人不存在或未发布
+Suggest:   > [ask human] check service configuration at textin.com
+
+场景：API服务未开通
+API 40008: 机器人未开通，请至市场开通后重试
+Suggest:   > [ask human] activate service at textin.com
+
+场景：请求头中 app-id 或 secret-code 为空
+API 40101: x-ti-app-id 或 x-ti-secret-code 为空
+Suggest:   > [fallback] re-run with --api free; or [ask human] run xparse-cli auth
+
+场景：app-id 或 secret-code 无效，认证失败
+API 40102: x-ti-app-id 或 x-ti-secret-code 无效，验证失败
+Suggest:   > [fallback] re-run with --api free; or [ask human] run xparse-cli auth
+
+场景：客户端IP不在账户白名单内
+API 40103: 客户端IP不在白名单
+Suggest:   > [ask human] check IP whitelist settings at textin.com
+
+场景：上传的图片格式不支持
+API 40301: 图片类型不支持
+Suggest:   > [fix] convert to a supported format (JPG, PNG, BMP, TIFF, WebP)
+
+场景：上传文件超过500MB大小限制
+API 40302: 上传文件大小不符，文件大小不超过 500M
+Suggest:   > [fix] split or compress the file to under 500MB
+
+场景：文件类型不支持（免费API仅支持PDF和图片）
+API 40303: 文件类型不支持
+Suggest:   > [fix] use a supported file format; if using free API, only PDF and images are supported — [ask human] run xparse-cli auth
+
+场景：图片尺寸超出允许范围（20~20000px）
+API 40304: 图片尺寸不符
+Suggest:   > [fix] resize image to 20–20000px per side
+
+场景：请求中未包含文件数据
+API 40305: 识别文件未上传
+Suggest:   > [fix] check the file argument
+
+场景：请求频率超过QPS限制
+API 40306: qps超过限制
+Suggest:   > [retry] wait 3s then retry, max 2 retries
+
+场景：当日免费API调用额度已用完
+API 40307: 今日免费额度已用完
+Suggest:   > [fallback] re-run with --api paid; or [ask human] run xparse-cli auth
+
+场景：提供的URL链接无效
+API 40400: 无效的请求链接，请检查链接是否正确
+Suggest:   > [fix] check and correct the URL
+
+场景：上传的文件已损坏无法解析
+API 40422: 文件损坏
+Suggest:   > [ask human] re-download the file or provide a different copy
+
+场景：加密PDF的密码错误
+API 40423: PDF密码错误
+Suggest:   > [ask human] provide the correct password; re-run with --password <correct>
+
+场景：--page-range 页码超出文件实际页数
+API 40424: 页数设置超出文件范围
+Suggest:   > [fix] adjust --page-range to fit within the document's actual page count
+
+场景：文件格式不在支持列表中
+API 40425: 文件格式不支持
+Suggest:   > [fix] use a supported file format; see xparse-cli help parse
+
+场景：DPI参数值不在允许列表（72/144/216）
+API 40427: DPI参数不在支持列表中
+Suggest:   > [fix] set DPI to 72, 144, or 216
+
+场景：Word或PPT转PDF过程失败或超时
+API 40428: word和ppt转pdf失败或者超时
+Suggest:   > [retry] or [fix] convert to PDF first, then parse the PDF
+
+场景：请求了不支持的解析引擎
+API 40429: 不支持的引擎
+Suggest:   > [ask human] contact support at textin.com
+
+场景：多页文档中部分页面解析失败
+API 50207: 部分页面解析失败
+Suggest:   > [retry] partial results may be available in stdout, retry for full results
+
+场景：未知API错误码
+API unknown: 未知错误
+Suggest:   > [retry] once; if still fails, escalate with full stderr
+
+
+================================================================================
+Download Errors (download command)
+================================================================================
+
+场景：--from JSON 文件读取失败或格式错误
+Error:    failed to read --from file: <err>
+Suggest:  > [fix] check that <file> is a valid parse result JSON
+
+场景：--from JSON 中未找到图片URL
+Error:    no image URLs found in <file>
+Suggest:  > [fix] ensure the JSON contains data.elements[].image_data.image_url fields
+
+场景：未提供任何图片URL（无参数且无 --from）
+Error:    no input files specified
+Suggest:  > [fix] provide URLs as arguments or use --from <result.json>
+
+场景：--output 指定的目录不存在
+Error:    output directory does not exist: <path>
+Suggest:  > [ask human] create the directory with mkdir -p <path>
+
+场景：下载图片时HTTP请求失败（网络错误）
+Error:    [N/M] <file> - request failed: <err>
+Suggest:  > [retry] <url>; check if URL is accessible
+
+场景：下载图片时服务端返回非200状态码
+Error:    [N/M] <file> - HTTP <code>
+Suggest:  > [retry] <url>; if persists, [ask human] check the URL
+
+场景：下载图片时无法创建本地文件
+Error:    [N/M] <file> - create file failed: <err>
+Suggest:  > [ask human] check write permissions for <outPath>
+
+场景：下载图片时写入本地文件失败
+Error:    [N/M] <file> - write failed: <err>
+Suggest:  > [ask human] check disk space and permissions for <outPath>
+
+场景：部分图片下载失败
+Error:    N/M downloads failed
+Suggest:  > [retry] re-run the command; check stderr above for per-file details

@@ -148,30 +148,7 @@ func formatCobraError(err error) string {
 }
 
 func init() {
-	// Save default help output function, then block --help / -h flags.
-	// Only "xparse-cli help [command]" is allowed.
-	defaultHelp := rootCmd.HelpFunc()
-
-	// Override HelpFunc so --help / -h triggers an error instead of showing help
-	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprintln(os.Stderr, exitcode.ErrInvalidFlag+": --help")
-		fmt.Fprintf(os.Stderr, "> [fix] remove --help; use 'xparse-cli help' instead\n")
-		os.Exit(exitcode.UsageError)
-	})
-
-	// Custom help subcommand that bypasses the overridden HelpFunc
-	rootCmd.SetHelpCommand(&cobra.Command{
-		Use:   "help [command]",
-		Short: "Help about any command",
-		Run: func(c *cobra.Command, args []string) {
-			target, _, e := c.Root().Find(args)
-			if target == nil || e != nil {
-				defaultHelp(c.Root(), args)
-				return
-			}
-			defaultHelp(target, []string{})
-		},
-	})
+	// Both "xparse-cli help [command]" and "xparse-cli [command] --help" are supported.
 
 	rootCmd.PersistentFlags().StringVar(&appIDFlag, "app-id", "", "Textin App ID (overrides env and config)")
 	rootCmd.PersistentFlags().StringVar(&secretCodeFlag, "secret-code", "", "Textin Secret Code (overrides env and config)")

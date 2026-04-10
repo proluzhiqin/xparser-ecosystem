@@ -97,13 +97,20 @@ xparse-cli parse secret.pdf --password mypassword
 
 ### 2. 付费 API（可选）
 
-前往 [Textin 控制台](https://www.textin.com/console/dashboard/setting) 获取 `x-ti-app-id` 和 `x-ti-secret-code`，然后运行：
+前往 [Textin 控制台](https://www.textin.com/user/login?redirect=%252Fconsole%252Fdashboard%252Fsetting&from=xparse-parse-skill) 获取凭证（`x-ti-app-id` 和 `x-ti-secret-code`），然后运行：
 
 ```bash
 xparse-cli auth
 ```
 
 按提示输入 App ID 和 Secret Code，凭证将保存至 `~/.xparse-cli/config.yaml`。
+
+也可通过环境变量配置（适合 CI/CD）：
+
+```bash
+export XPARSE_APP_ID=your_app_id
+export XPARSE_SECRET_CODE=your_secret_code
+```
 
 ```bash
 # 显式使用付费 API
@@ -131,8 +138,16 @@ xparse-cli parse report.pdf --api paid
 | `--password` | | 加密文档密码 |
 | `--include-char-details` | `false` | 返回字符级坐标和置信度 |
 | `--list` | | 从文件读取输入列表（需配合 `--output`） |
-| `--output` | _(stdout)_ | 输出文件路径或目录 |
-| `--verbose` | `false` | 调试模式，打印 HTTP 请求详情 |
+| `--output` | _(stdout)_ | 输出文件路径或目录（目录须已存在） |
+
+**全局参数（所有命令均支持）：**
+
+| 参数 | 说明 |
+|------|------|
+| `--app-id` | Textin App ID（覆盖环境变量和配置文件） |
+| `--secret-code` | Textin Secret Code（覆盖环境变量和配置文件） |
+| `--base-url` | API 地址（私有化部署时使用） |
+| `--verbose` | 调试模式，打印 HTTP 请求详情 |
 
 ### API capabilities 默认值
 
@@ -215,7 +230,15 @@ xparse-cli parse report.pdf --verbose
 | 2 | 参数错误 | 纯文本 + `> [tag] suggestion` |
 | 3 | API 返回错误 | `api_code：message` + `> [tag] suggestion` |
 
-每条错误输出两行到 stderr，第二行以 `>` 开头，包含 `[tag]` 标签指示处理方式：
+每条错误输出到 stderr，格式：
+
+```
+<错误信息>
+> <建议操作>
+  (request_id: xxx, contact Textin support if unresolved)   ← 部分 API 错误额外输出
+```
+
+第二行以 `>` 开头，包含 `[tag]` 标签指示处理方式：
 
 | 标签 | 含义 |
 |------|------|
@@ -229,6 +252,12 @@ xparse-cli parse report.pdf --verbose
 ```
 invalid --view value, must be 'markdown' or 'json'
 > [fix] use --view markdown or --view json
+```
+
+```
+40306：服务暂时不可用
+> [retry] wait 3s then retry, max 2 retries
+  (request_id: 644e2efdb..., contact Textin support if unresolved)
 ```
 
 > stdout 仅输出文档内容，stderr 仅输出错误信息，exit code 严格为 0/1/2/3。
@@ -245,8 +274,11 @@ invalid --view value, must be 'markdown' or 'json'
 | 网页 | HTML, MHTML |
 
 限制：
-- 文件大小不超过 500MB
-- PDF 页数不超过 1000 页
-- XLS/XLSX/CSV 每个 sheet 行数不超过 2000，列数不超过 100
-- TXT 文件大小不超过 100KB
-- 图片宽高在 20～20000 像素范围内
+
+| 限制项 | 免费 API | 付费 API |
+|--------|----------|----------|
+| 文件大小 | 10MB | 500MB |
+| PDF 页数 | — | 1000 页 |
+| XLS/XLSX/CSV | — | 每 sheet ≤ 2000 行 × 100 列 |
+| TXT | — | ≤ 100KB |
+| 图片尺寸 | 20～20000 像素 | 20～20000 像素 |

@@ -54,7 +54,11 @@ xparse-cli parse --list files.txt --output ./result/ # Batch mode
 xparse-cli auth                                     # Interactive credential setup
 ```
 
-Or set environment variables:
+When running `xparse-cli auth`, the user will be prompted for:
+- **App ID** (`x-ti-app-id`) — get from [Textin console](https://www.textin.com/user/login?redirect=%252Fconsole%252Fdashboard%252Fsetting&from=xparse-parse-skill)
+- **Secret Code** (`x-ti-secret-code`) — same page
+
+Or set environment variables directly (useful for CI/CD):
 
 ```bash
 export XPARSE_APP_ID=your_app_id
@@ -106,14 +110,16 @@ Credential priority: CLI flags → env vars → `~/.xparse-cli/config.yaml`
 
 ## Supported formats
 
-| API mode | Supported formats |
-|----------|-------------------|
-| **free** | PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WebP |
-| **paid** | PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WebP, DOC, DOCX, XLS, XLSX, CSV, PPT, PPTX, HTML, MHTML, TXT, RTF, OFD |
+| API mode | Max file size | Supported formats |
+|----------|---------------|-------------------|
+| **free** | 10 MB | PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WebP |
+| **paid** | 500 MB | PDF, JPG, JPEG, PNG, BMP, TIFF, GIF, WebP, DOC, DOCX, XLS, XLSX, CSV, PPT, PPTX, HTML, MHTML, TXT, RTF, OFD |
 
 Both modes support URL input (`http://…`).
 
 If the file is Office/HTML/TXT format and no paid credentials exist, ask human to run `xparse-cli auth` or set credentials; do not silently use free API (it will fail with `40303：文件类型不支持`).
+
+If the file exceeds the size limit, suggest compressing/splitting it or switching to paid API with `--api paid`.
 
 ## Download images
 
@@ -123,7 +129,7 @@ xparse-cli download <url> --output ./images/                # Direct URL
 xparse-cli download <url> --output ./photo.jpg              # Save as specific file
 ```
 
-> `--output` directory must exist. If not, ask human to create it first.
+> `--output` directory must exist. If not, ask human to run `mkdir -p <dir>` first.
 
 ---
 
@@ -131,16 +137,17 @@ xparse-cli download <url> --output ./photo.jpg              # Save as specific f
 
 CLI output contract:
 - **stdout** → document content only (markdown or json)
-- **stderr** → two-line error: line 1 = error, line 2 = `> suggestion`
+- **stderr** → error lines (see format below)
 - **$?** → exit code: 0 (success), 1 (general error), 2 (bad command), 3 (API error)
 
 ### stderr format
 
-Every error prints two lines to stderr. The second line tells the agent exactly what to do — follow it directly.
+Every error prints at least two lines to stderr. The second line tells the agent exactly what to do — follow it directly. Some API errors (when Textin support is needed) print an optional third line with a request ID.
 
 ```
 <error message>
 > <suggestion>
+  (request_id: <id>, contact Textin support if unresolved)   ← optional, exit code 3 only
 ```
 
 | Suggestion tag | Action |
@@ -162,6 +169,10 @@ else
   # Read the suggestion line and follow it
   SUGGESTION=$(sed -n '2p' stderr.tmp)
   # $SUGGESTION starts with "> " — parse the [tag] to decide action
+
+  # For exit code 3: optional line 3 contains request_id for Textin support
+  # Format: "  (request_id: <id>, contact Textin support if unresolved)"
+  REQUEST_ID_LINE=$(sed -n '3p' stderr.tmp)
 fi
 rm -f stderr.tmp
 ```
@@ -173,7 +184,7 @@ rm -f stderr.tmp
 | 0 | Success | Use stdout |
 | 1 | General error (network, filesystem, credentials) | Follow `> suggestion` — usually retry or ask human |
 | 2 | Bad command (wrong flag, missing input) | Follow `> [fix]` suggestion — fix and re-run, never retry same command |
-| 3 | API error (`api_code：message` on line 1) | Follow `> suggestion` — retry, fallback, fix, or ask human |
+| 3 | API error (`api_code：message` on line 1) | Follow `> suggestion` — retry, fallback, fix, or ask human; if line 3 present, include request_id when escalating to support |
 
 ## Rules
 
@@ -181,7 +192,7 @@ rm -f stderr.tmp
 - **Free API = PDF + images only** — for Office/HTML/TXT files, paid API credentials are required
 - **Follow the `> suggestion` line** — every error provides a context-specific actionable suggestion on the second line of stderr; this is the primary error-handling mechanism
 - **Quote file paths** with spaces: `xparse-cli parse "report 01.pdf"`
-- **--output directories must exist** — do not create them; ask human if missing
+- **--output directories must exist** — validated before any API call; ask human to `mkdir -p <dir>` if missing
 - **--verbose on retry** — add `--verbose` when retrying network errors
 - **auth is human-only** — `xparse-cli auth` is interactive; ask human to run it
 - **Upgrade:** `source <(curl -fsSL https://dllf.intsig.net/download/2026/Solution/xparse-cli/install.sh)`

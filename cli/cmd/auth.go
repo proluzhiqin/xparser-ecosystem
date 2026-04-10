@@ -15,13 +15,20 @@ var authShow bool
 
 var authCmd = &cobra.Command{
 	Use:   "auth",
-	Short: "Configure API credentials for document parsing",
-	Long: `Authenticate with your Textin xParser API credentials (app-id and secret-code).
-Get your credentials at https://www.textin.com/console/dashboard/setting`,
-	Example: `  xparse-cli auth              # Interactive credential setup
-  xparse-cli auth --show       # Show current credential source
+	Short: "Configure Textin API credentials",
+	Long: `Configure your Textin xParser API credentials (App ID and Secret Code).
 
-  # For automation, set environment variables:
+Get your credentials:
+  https://www.textin.com/user/login?redirect=%252Fconsole%252Fdashboard%252Fsetting&from=xparse-parse-skill
+
+Credentials are resolved in this order:
+  1. --app-id / --secret-code flags
+  2. XPARSE_APP_ID / XPARSE_SECRET_CODE environment variables
+  3. ~/.xparse-cli/config.yaml (set via 'xparse-cli auth')`,
+	Example: `  xparse-cli auth              # Interactive setup, saves to ~/.xparse-cli/config.yaml
+  xparse-cli auth --show       # Show current credential source and masked values
+
+  # Environment variables (useful for CI/CD):
   export XPARSE_APP_ID=your_app_id
   export XPARSE_SECRET_CODE=your_secret_code`,
 	Args: cobra.NoArgs,
@@ -65,7 +72,7 @@ func runAuthShow() error {
 
 func runAuthSetup() error {
 	fmt.Println("Textin xParser API Credential Setup")
-	fmt.Println("Get your credentials from: https://www.textin.com/console/dashboard/setting")
+	fmt.Println("Get your credentials from: https://www.textin.com/user/login?redirect=%252Fconsole%252Fdashboard%252Fsetting&from=xparse-parse-skill")
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)

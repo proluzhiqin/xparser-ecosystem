@@ -289,6 +289,7 @@ func (c *XParserClient) ParseURL(fileURL string, opts *ParseOptions) (*ParseResp
 }
 
 func (c *XParserClient) setAuthHeaders(req *http.Request) {
+	req.Header.Set("X-From", "cli")
 	if !c.IsFreeAPI && c.AppID != "" && c.SecretCode != "" {
 		req.Header.Set("x-ti-app-id", c.AppID)
 		req.Header.Set("x-ti-secret-code", c.SecretCode)
